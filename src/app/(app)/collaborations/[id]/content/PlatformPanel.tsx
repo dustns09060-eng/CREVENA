@@ -15,7 +15,8 @@ import {
 } from "@/lib/ai/prompts";
 import { buildGuideCheckPrompt } from "@/lib/ai/photo-blog-prompts";
 import { parseJsonResponse } from "@/lib/ai/photo-blog-prompts";
-import { checkContentDeterministic } from "@/lib/content-guide-check";
+import { checkContentDeterministic, checkAgainstGuideAnalysis } from "@/lib/content-guide-check";
+import type { GuideAnalysis } from "@/lib/ai/guide-analysis-prompts";
 import { CONTENT_STATUS_LABELS, CONTENT_STATUSES } from "@/lib/content-status";
 import { saveContent, updateContent, updateContentStatus } from "./actions";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
@@ -62,10 +63,11 @@ export const PlatformPanel = forwardRef<
     collaborationInfo: Omit<ContentGenerationInput, "reviewNotes">;
     reviewNotes: ReviewNotes;
     initial?: { id: string; body: string; status: ContentStatus; generationInput: PlatformParts | null };
+    guideAnalysis?: GuideAnalysis | null;
     onStatusChange?: (status: PlatformStatus) => void;
   }
 >(function PlatformPanel(
-  { platform, collaborationId, collaborationInfo, reviewNotes, initial, onStatusChange },
+  { platform, collaborationId, collaborationInfo, reviewNotes, initial, guideAnalysis, onStatusChange },
   ref,
 ) {
   const router = useRouter();
@@ -106,18 +108,24 @@ export const PlatformPanel = forwardRef<
         : null,
     [hasContent, flatText, collaborationInfo],
   );
-  const guideItems = useMemo(
-    () =>
-      deterministicCheck
-        ? buildDeterministicGuideItems(deterministicCheck, {
-            requiredKeywords: collaborationInfo.requiredKeywords,
-            requiredHashtags: collaborationInfo.requiredHashtags,
-            requiredMentions: collaborationInfo.requiredMentions,
-            adDisclosureText: collaborationInfo.adDisclosureText,
-          })
-        : [],
-    [deterministicCheck, collaborationInfo],
-  );
+  // Prefer the STEP35.5 structured guide analysis when available (covers
+  // more than requiredKeywords/Hashtags/Mentions — min length, prohibited
+  // expressions, required URLs, etc.); otherwise fall back to the STEP33
+  // deterministic check against the collaboration's plain guide fields.
+  const guideItems = useMemo(() => {
+    if (!hasContent) return [];
+    if (guideAnalysis) {
+      return checkAgainstGuideAnalysis({ body: flatText }, guideAnalysis);
+    }
+    return deterministicCheck
+      ? buildDeterministicGuideItems(deterministicCheck, {
+          requiredKeywords: collaborationInfo.requiredKeywords,
+          requiredHashtags: collaborationInfo.requiredHashtags,
+          requiredMentions: collaborationInfo.requiredMentions,
+          adDisclosureText: collaborationInfo.adDisclosureText,
+        })
+      : [];
+  }, [hasContent, guideAnalysis, flatText, deterministicCheck, collaborationInfo]);
 
   async function generate() {
     setLoading(true);

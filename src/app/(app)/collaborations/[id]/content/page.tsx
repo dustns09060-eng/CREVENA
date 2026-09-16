@@ -107,6 +107,7 @@ export default async function CollaborationContentPage({
         <StudioTabs
           collaborationId={id}
           initialPhotos={photosWithUrls}
+          initialGuideRawContent={guide?.raw_content ?? ""}
           initialReviewNotes={(collaboration.review_notes as ReviewNotes | null) ?? {}}
           initialInstagram={initialContents.INSTAGRAM_FEED}
           initialThreads={initialContents.THREADS}
