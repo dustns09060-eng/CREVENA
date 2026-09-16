@@ -74,7 +74,7 @@ export default async function CollaborationPhotosPage({
         <PhotoBlogStudio
           collaborationId={id}
           initialPhotos={photosWithUrls}
-          initialReviewNotes={(collaboration.review_notes as ReviewNotes | null) ?? {}}
+          reviewNotes={(collaboration.review_notes as ReviewNotes | null) ?? {}}
           collaborationInfo={{
             brandName: collaboration.brand_name,
             productName: collaboration.product_name,

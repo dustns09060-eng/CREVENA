@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAIProvider } from "@/lib/ai";
-import { logAiUsage, classifyErrorType } from "@/lib/ai/usage";
+import { logAiUsage, classifyErrorType, GENERIC_AI_FAILURE_MESSAGE } from "@/lib/ai/usage";
 import { checkAndConsumeAiCredits, refundAiCredits } from "@/lib/ai/usage-limits";
 import { buildPhotoAnalysisPrompt, parseJsonResponse } from "@/lib/ai/photo-blog-prompts";
 import { PHOTO_TYPES } from "@/lib/photo-type";
@@ -121,12 +121,6 @@ export async function POST(request: Request) {
     await refundAiCredits(supabase, usageCheck.reservationId);
     const errorType = classifyErrorType(error);
     console.error(`[/api/ai/analyze-photo] 실패 (${errorType}):`, error);
-    const message =
-      errorType === "PARSE_ERROR"
-        ? "콘텐츠 생성 중 형식 오류가 발생했습니다. 다시 시도해주세요."
-        : error instanceof Error
-          ? error.message
-          : "사진 분석에 실패했습니다.";
     await logAiUsage(supabase, {
       userId: user.id,
       collaborationId: photo.collaboration_id,
@@ -138,6 +132,6 @@ export async function POST(request: Request) {
       errorType,
       creditsUsed: 0,
     });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: GENERIC_AI_FAILURE_MESSAGE }, { status: 500 });
   }
 }

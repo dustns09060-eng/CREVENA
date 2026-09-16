@@ -97,6 +97,9 @@ export default async function CollaborationContentPage({
       </Link>
       <h1 className="mt-2 text-2xl font-bold text-zinc-900">CREVENA 통합 콘텐츠 제작실</h1>
       <p className="mt-1 text-sm text-zinc-500">
+        사진과 실제 사용 경험을 바탕으로 블로그부터 SNS까지 한 번에 만들어보세요.
+      </p>
+      <p className="mt-1 text-xs font-medium text-zinc-400">
         {collaboration.brand_name} · {collaboration.product_name}
       </p>
 

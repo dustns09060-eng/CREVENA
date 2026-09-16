@@ -37,6 +37,16 @@ export async function logAiUsage(
   });
 }
 
+// STEP35: the single user-facing message for any AI-generation failure
+// (parse errors, provider errors, network errors — whatever reaches an AI
+// route's catch block). Every such catch block already calls
+// refundAiCredits before building this message, so "복구되었습니다" is
+// always true by the time it's shown. Never substitute the raw error
+// message here — that's how STEP34's raw JSON.parse text (and STEP35's
+// leftover raw provider-error text) reached the UI.
+export const GENERIC_AI_FAILURE_MESSAGE =
+  "콘텐츠 생성 중 문제가 발생했습니다.\n사용한 크레딧은 자동으로 복구되었습니다.\n잠시 후 다시 시도해주세요.";
+
 export function classifyErrorType(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("ANTHROPIC_API_KEY") || message.includes("환경변수")) return "MISSING_API_KEY";
