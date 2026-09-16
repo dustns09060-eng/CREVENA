@@ -28,8 +28,20 @@ export const PLAN_CONFIGS: Record<PlanTier, PlanConfig> = {
     tier: "FREE",
     label: "FREE",
     monthlyPriceKrw: 0,
-    monthlyCreditLimit: 15,
-    rateLimitPerMinute: 5,
+    // STEP36: raised from 15 — a single real one-click run (가이드 분석 2 +
+    // 사진 분석 10장 + 순서 추천 2 + 블로그 10 + Instagram 1 + Threads 1 = 26)
+    // used to exhaust the entire FREE month before the user ever saw a
+    // finished piece of content. 40 comfortably covers one full run plus a
+    // guide check and a couple of partial regenerations, while staying well
+    // below BASIC(100)/PRO(400) so the paid tiers keep their relative value.
+    // This is a credit-allowance change, not a price change — FREE stays ₩0.
+    monthlyCreditLimit: 40,
+    // STEP36: the old 5/min was hit by ~5 sequential photo-analysis calls
+    // inside the one-click pipeline (see the STEP36 report's rate-limit
+    // section) — a legitimate batch of 10+ photos would always trip it.
+    // Raised to keep meaningfully limiting automated abuse (credits remain
+    // the real cost cap) while letting a normal one-click run finish.
+    rateLimitPerMinute: 20,
     maxCollaborations: 3,
     maxContents: 15,
     photoBlogEnabled: false,
@@ -49,7 +61,7 @@ export const PLAN_CONFIGS: Record<PlanTier, PlanConfig> = {
     label: "BASIC",
     monthlyPriceKrw: 9900,
     monthlyCreditLimit: 100,
-    rateLimitPerMinute: 15,
+    rateLimitPerMinute: 30, // STEP36: same reasoning as FREE, scaled up
     maxCollaborations: 20,
     maxContents: 150,
     photoBlogEnabled: true,
@@ -69,7 +81,7 @@ export const PLAN_CONFIGS: Record<PlanTier, PlanConfig> = {
     label: "PRO",
     monthlyPriceKrw: 29900,
     monthlyCreditLimit: 400,
-    rateLimitPerMinute: 30,
+    rateLimitPerMinute: 50, // STEP36: same reasoning as FREE, scaled up
     maxCollaborations: null,
     maxContents: null,
     photoBlogEnabled: true,

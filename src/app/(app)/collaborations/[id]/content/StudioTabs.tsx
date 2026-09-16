@@ -17,7 +17,9 @@ import {
 } from "./studio-ui";
 import { updateReviewNotes } from "@/lib/actions/review-notes";
 import { updateGuideRawContent } from "@/lib/actions/guide";
+import { getRemainingCredits } from "@/lib/actions/usage";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
+import type { BlogMeta } from "../photos/actions";
 import { buildGuideAnalysisPrompt, type GuideAnalysis } from "@/lib/ai/guide-analysis-prompts";
 import { parseJsonResponse } from "@/lib/ai/photo-blog-prompts";
 import type { ContentGenerationInput, ReviewNotes } from "@/lib/ai/prompts";
@@ -55,6 +57,7 @@ export function StudioTabs({
   initialReviewNotes,
   initialInstagram,
   initialThreads,
+  initialBlog,
 }: {
   collaborationId: string;
   collaborationInfo: Omit<ContentGenerationInput, "reviewNotes">;
@@ -75,12 +78,18 @@ export function StudioTabs({
   initialReviewNotes: ReviewNotes;
   initialInstagram?: { id: string; body: string; status: ContentStatus; generationInput: PlatformParts | null };
   initialThreads?: { id: string; body: string; status: ContentStatus; generationInput: PlatformParts | null };
+  initialBlog?: { id: string; body: string; generationInput: BlogMeta | null };
 }) {
   const [tab, setTab] = useState<TabKey>("BLOG");
   const [reviewNotes, setReviewNotes] = useState<ReviewNotes>(initialReviewNotes);
   const [guideText, setGuideText] = useState(initialGuideRawContent);
   const [guideAnalysis, setGuideAnalysis] = useState<GuideAnalysis | null>(null);
+  // STEP36 item 6: the exact guide text guideAnalysis was computed from, so
+  // editing the guide afterward can be flagged as "stale" (△) without ever
+  // silently deleting the existing analysis result.
+  const [guideAnalyzedText, setGuideAnalyzedText] = useState<string | null>(null);
   const [guideError, setGuideError] = useState<string | null>(null);
+  const guideStale = guideAnalysis !== null && guideText !== guideAnalyzedText;
   const photoManager = usePhotoManager(collaborationId, initialPhotos);
   const [selected, setSelected] = useState<Record<StudioPlatform, boolean>>({
     BLOG: true,
@@ -88,17 +97,23 @@ export function StudioTabs({
     THREADS: true,
   });
   const [platformStatus, setPlatformStatus] = useState<Record<StudioPlatform, PlatformStatus>>({
-    BLOG: "EMPTY",
+    BLOG: initialBlog?.generationInput ? "DONE" : "EMPTY",
     INSTAGRAM_FEED: initialInstagram ? "DONE" : "EMPTY",
     THREADS: initialThreads ? "DONE" : "EMPTY",
   });
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
   const [pipelineSummary, setPipelineSummary] = useState<string | null>(null);
+  const [budgetWarning, setBudgetWarning] = useState<string | null>(null);
+  const [checkingBudget, setCheckingBudget] = useState(false);
 
   const blogRef = useRef<PhotoBlogStudioHandle>(null);
   const igRef = useRef<PlatformPanelHandle>(null);
   const threadsRef = useRef<PlatformPanelHandle>(null);
+  // STEP36 item 22: `pipelineRunning` state alone isn't enough — a second
+  // click can fire before React re-renders with the disabled button, so a
+  // synchronous ref is checked first to guarantee only one run starts.
+  const pipelineRunningRef = useRef(false);
 
   function handleReviewNoteBlur(key: keyof ReviewNotes, value: string) {
     updateReviewNotes(collaborationId, { ...reviewNotes, [key]: value });
@@ -116,6 +131,7 @@ export function StudioTabs({
   async function analyzeGuide(): Promise<void> {
     if (!guideText.trim()) return;
     setGuideError(null);
+    const analyzedText = guideText;
     try {
       const { systemPrompt, prompt, responseSchema } = buildGuideAnalysisPrompt(guideText);
       const res = await fetch("/api/ai/analyze-guide", {
@@ -127,6 +143,7 @@ export function StudioTabs({
       if (!res.ok) throw new Error(data.error ?? "가이드 분석에 실패했습니다.");
       const parsed = parseJsonResponse<GuideAnalysis>(data.content);
       setGuideAnalysis(parsed);
+      setGuideAnalyzedText(analyzedText);
     } catch (err) {
       setGuideError(err instanceof Error ? err.message : "가이드 분석에 실패했습니다.");
       throw err;
@@ -154,8 +171,37 @@ export function StudioTabs({
   // analysis. A step failing never stops the pipeline or discards another
   // step's success; Promise.allSettled still isolates platform generation
   // exactly as STEP33 already guaranteed.
+  // STEP36 item 5: before actually starting, check the SERVER-authoritative
+  // remaining balance (never the client-side estimate above, and never the
+  // sidebar UsageBadge — both are informational only) and warn the user if
+  // this run's estimate exceeds it. The estimate itself never changes what
+  // gets charged; only the existing per-call server checks do that.
+  async function handleStartClick() {
+    if (pipelineRunningRef.current || checkingBudget) return;
+    if (budgetWarning) {
+      // Second click: user already saw the warning and chose to proceed.
+      setBudgetWarning(null);
+      await runOneClickPipeline();
+      return;
+    }
+    setCheckingBudget(true);
+    try {
+      const remainingInfo = await getRemainingCredits();
+      if (remainingInfo && estimatedCredits > remainingInfo.remaining) {
+        setBudgetWarning(
+          `현재 ${remainingInfo.remaining}크레딧이 남아 있고 이 작업에는 최대 ${estimatedCredits}크레딧이 필요합니다. 일부 단계가 크레딧 부족으로 중간에 실패할 수 있습니다. 플랫폼 선택을 줄이거나 요금제를 업그레이드할 수 있어요. 그래도 진행하시겠습니까?`,
+        );
+        return;
+      }
+    } finally {
+      setCheckingBudget(false);
+    }
+    await runOneClickPipeline();
+  }
+
   async function runOneClickPipeline() {
-    if (pipelineRunning) return;
+    if (pipelineRunningRef.current) return;
+    pipelineRunningRef.current = true;
     setPipelineRunning(true);
     setPipelineSummary(null);
 
@@ -176,7 +222,7 @@ export function StudioTabs({
 
     // STEP A: 가이드 분석
     if (guideText.trim()) {
-      if (guideAnalysis) {
+      if (guideAnalysis && !guideStale) {
         update("guide", "done", "(이미 분석됨)");
       } else {
         update("guide", "active");
@@ -208,7 +254,7 @@ export function StudioTabs({
     if (photoManager.photos.length >= 2) {
       update("photoOrder", "active");
       try {
-        await photoManager.handleSuggestOrder();
+        await photoManager.handleSuggestOrder(guideAnalysis?.minimumPhotos);
         update("photoOrder", "done");
       } catch {
         update("photoOrder", "failed");
@@ -249,6 +295,7 @@ export function StudioTabs({
     // STEP F: 결과 화면 표시
     update("result", "done");
 
+    pipelineRunningRef.current = false;
     setPipelineRunning(false);
   }
 
@@ -276,13 +323,23 @@ export function StudioTabs({
         )}
         {guideAnalysis && (
           <div className="mt-3">
+            {guideStale && (
+              <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                △ 가이드 내용이 수정되었습니다. 분석 결과가 최신 내용을 반영하지 못했을 수 있어요 — &quot;AI
+                콘텐츠 만들기&quot;를 다시 실행하면 자동으로 재분석됩니다.
+              </p>
+            )}
             <GuideAnalysisCard analysis={guideAnalysis} onChange={setGuideAnalysis} />
           </div>
         )}
       </section>
 
       {/* ② 사진 준비 */}
-      <PhotoSection manager={photoManager} requiredPhotoCount={photoBlogInfo.requiredPhotoCount} />
+      <PhotoSection
+        manager={photoManager}
+        requiredPhotoCount={photoBlogInfo.requiredPhotoCount}
+        minimumPhotos={guideAnalysis?.minimumPhotos}
+      />
 
       {/* ③ 내 경험 추가하기 (선택) */}
       <Accordion title="내 경험 추가하기" description="선택 입력 — 비워둬도 생성할 수 있습니다">
@@ -336,13 +393,34 @@ export function StudioTabs({
 
         <div className="mt-5 flex flex-col items-stretch gap-1 border-t border-zinc-100 pt-4">
           <SectionHeader step={5} title="AI 콘텐츠 만들기" />
-          <button
-            onClick={runOneClickPipeline}
-            disabled={pipelineRunning || selectedCount === 0}
-            className="mt-2 min-h-[48px] rounded-lg bg-zinc-900 px-5 py-3 text-base font-semibold text-white transition-opacity hover:bg-zinc-800 disabled:opacity-40"
-          >
-            {pipelineRunning ? "콘텐츠 만드는 중..." : "AI 콘텐츠 만들기"}
-          </button>
+          {budgetWarning && (
+            <p className="mb-1 whitespace-pre-wrap rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {budgetWarning}
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleStartClick}
+              disabled={pipelineRunning || checkingBudget || selectedCount === 0}
+              className="mt-2 min-h-[48px] flex-1 rounded-lg bg-zinc-900 px-5 py-3 text-base font-semibold text-white transition-opacity hover:bg-zinc-800 disabled:opacity-40"
+            >
+              {pipelineRunning
+                ? "콘텐츠 만드는 중..."
+                : checkingBudget
+                  ? "크레딧 확인 중..."
+                  : budgetWarning
+                    ? "그래도 진행"
+                    : "AI 콘텐츠 만들기"}
+            </button>
+            {budgetWarning && (
+              <button
+                onClick={() => setBudgetWarning(null)}
+                className="mt-2 min-h-[48px] rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                취소
+              </button>
+            )}
+          </div>
           {selectedCount > 0 && (
             <span className="text-[11px] text-zinc-400">예상 사용량 {estimatedCredits} 크레딧</span>
           )}
@@ -401,6 +479,7 @@ export function StudioTabs({
             reviewNotes={reviewNotes}
             guideAnalysis={guideAnalysis}
             collaborationInfo={photoBlogInfo}
+            initial={initialBlog}
             onStatusChange={(s) => setStatus("BLOG", s)}
           />
         </div>

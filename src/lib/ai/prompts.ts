@@ -62,11 +62,21 @@ const REVIEW_NOTE_LABELS: Record<keyof ReviewNotes, string> = {
   personalExperience: "개인적인 경험",
 };
 
+// STEP36 item 12/13: same three-source rule as the photo-blog prompt (see
+// NO_FABRICATION_RULE in photo-blog-prompts.ts) — writes can only draw on
+// 사진관찰사실/사용자입력경험/업체가이드객관정보. Confirmed via a real test run that
+// without this, the model invented child-reaction lines ("스스로 흔들어보려는
+// 모습이 신기하기도...") even with empty review notes.
 const COMMON_RULES = [
   "너는 인플루언서의 협찬 콘텐츠 작성을 돕는 어시스턴트다.",
   "아래 제공된 정보만 사용해서 글을 작성하라.",
   "제품이나 브랜드에 대해 사실이 아닌 내용, 제공되지 않은 효과나 스펙을 절대로 지어내지 마라.",
   "사용자가 입력하지 않은 후기 항목은 언급하지 마라.",
+  "특히 아이/사람의 반응이나 감정(\"좋아했다\", \"신기해했다\", \"흥미를 보였다\" 등), 시간이 지나며",
+  "나타난 변화나 효과(\"며칠 써보니 달라졌다\" 등), 앞으로의 의향(\"재구매할 예정이다\" 등)은",
+  "사용자가 입력한 후기 메모에 실제로 그 내용이 있을 때만 써라. 후기 메모가 비어 있으면 이런 문장을",
+  "아예 쓰지 말고, 제공된 협찬 정보(제품 사실)만으로 담백하게 서술하라 — 경험이 빈약해 보여도 절대로",
+  "채워 넣지 마라.",
 ].join("\n");
 
 function formatCollaborationInfo(input: ContentGenerationInput) {

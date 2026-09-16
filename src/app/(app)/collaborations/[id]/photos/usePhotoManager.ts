@@ -46,6 +46,13 @@ export function usePhotoManager(collaborationId: string, initialPhotos: PhotoWit
   const [ordering, setOrdering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [excludePhotoIds, setExcludePhotoIds] = useState<Set<string>>(new Set());
+  // STEP36 item 6: which photo ids the current order/exclude suggestion was
+  // computed for — adding or removing a photo afterward doesn't discard the
+  // suggestion, but flags it stale so the UI can prompt a re-run.
+  const [orderSuggestedForIds, setOrderSuggestedForIds] = useState<Set<string> | null>(null);
+  const orderStale =
+    orderSuggestedForIds !== null &&
+    (photos.length !== orderSuggestedForIds.size || photos.some((p) => !orderSuggestedForIds.has(p.id)));
 
   const busy = uploading || analyzing || ordering;
 
@@ -112,7 +119,11 @@ export function usePhotoManager(collaborationId: string, initialPhotos: PhotoWit
 
   // Also asks for a primary-photo and "probably skip these" suggestion in the
   // same call (see the extended photoOrderSchema) — no extra AI call/credit.
-  async function handleSuggestOrder() {
+  // STEP36 item 9: minimumPhotos (from the guide's structured analysis, when
+  // available) caps how many photos the AI's exclude-suggestion may remove —
+  // the guide's required photo count always takes priority over the
+  // suggestion, and photos are still never deleted, only marked 제외.
+  async function handleSuggestOrder(minimumPhotos?: number | null) {
     if (photos.length < 2) return;
     setOrdering(true);
     setError(null);
@@ -151,7 +162,13 @@ export function usePhotoManager(collaborationId: string, initialPhotos: PhotoWit
       }
 
       setPhotos(finalOrder);
-      setExcludePhotoIds(new Set(parsed.excludePhotoIds ?? []));
+      let excludeIds = parsed.excludePhotoIds ?? [];
+      if (minimumPhotos && finalOrder.length - excludeIds.length < minimumPhotos) {
+        const allowedExcludeCount = Math.max(0, finalOrder.length - minimumPhotos);
+        excludeIds = excludeIds.slice(0, allowedExcludeCount);
+      }
+      setExcludePhotoIds(new Set(excludeIds));
+      setOrderSuggestedForIds(new Set(finalOrder.map((p) => p.id)));
       await reorderPhotos(collaborationId, finalOrder.map((p) => p.id));
       router.refresh();
     } catch (err) {
@@ -260,6 +277,7 @@ export function usePhotoManager(collaborationId: string, initialPhotos: PhotoWit
     error,
     setError,
     excludePhotoIds,
+    orderStale,
     handleAddPhotos,
     handleAnalyzeAll,
     handleSuggestOrder,

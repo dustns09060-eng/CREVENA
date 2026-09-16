@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   buildContentPrompt,
@@ -71,7 +71,13 @@ export const PlatformPanel = forwardRef<
   ref,
 ) {
   const router = useRouter();
+  // STEP36 item 22: synchronous guard against a rapid double-click starting
+  // two overlapping (and double-charging) generations.
+  const loadingRef = useRef(false);
   const [parts, setParts] = useState<PlatformParts>(initial?.generationInput ?? emptyParts(platform));
+  // STEP36 item 6: reviewNotes snapshot at the last successful generation —
+  // editing 후기 afterward never deletes the result, just flags it stale.
+  const [generatedWithNotes, setGeneratedWithNotes] = useState<ReviewNotes | null>(null);
   const [savedId, setSavedId] = useState<string | null>(initial?.id ?? null);
   const [status, setStatus] = useState<ContentStatus>(initial?.status ?? "DRAFT");
   const [dirty, setDirty] = useState(false);
@@ -94,6 +100,21 @@ export const PlatformPanel = forwardRef<
     // values below should re-trigger a status report.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, hasContent]);
+
+  // STEP36 item 3: PhotoBlogStudio already warns on tab-close with unsaved
+  // changes — this panel was missing the same guard.
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (!dirty) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [dirty]);
+
+  const reviewNotesStale =
+    generatedWithNotes !== null && JSON.stringify(reviewNotes) !== JSON.stringify(generatedWithNotes);
 
   const flatText = useMemo(() => assembleText(platform, parts), [platform, parts]);
   const deterministicCheck = useMemo(
@@ -128,6 +149,8 @@ export const PlatformPanel = forwardRef<
   }, [hasContent, guideAnalysis, flatText, deterministicCheck, collaborationInfo]);
 
   async function generate() {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     setAiCheckNotes(null);
@@ -151,11 +174,13 @@ export const PlatformPanel = forwardRef<
       setSavedId(null);
       setStatus("DRAFT");
       setDirty(true);
+      setGeneratedWithNotes(reviewNotes);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "생성에 실패했습니다.");
       throw err;
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   }
@@ -222,6 +247,13 @@ export const PlatformPanel = forwardRef<
     await navigator.clipboard.writeText(flatText);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  const [copiedPostIndex, setCopiedPostIndex] = useState<number | null>(null);
+  async function copyPost(index: number) {
+    await navigator.clipboard.writeText((parts as ThreadsParts).posts[index]);
+    setCopiedPostIndex(index);
+    setTimeout(() => setCopiedPostIndex((cur) => (cur === index ? null : cur)), 1500);
   }
 
   async function changeStatus(next: ContentStatus) {
@@ -315,6 +347,12 @@ export const PlatformPanel = forwardRef<
         </p>
       )}
 
+      {reviewNotesStale && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          △ &quot;내 경험 추가하기&quot; 내용이 수정되었습니다. &quot;다시 생성&quot;하면 최신 내용이 반영됩니다.
+        </p>
+      )}
+
       {hasContent && (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4">
@@ -355,15 +393,23 @@ export const PlatformPanel = forwardRef<
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-zinc-500">게시물 {i + 1}</span>
-                    <button
-                      onClick={() => regenerateField("post", i)}
-                      disabled={busy}
-                      className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-100 disabled:opacity-50"
-                    >
-                      {regeneratingField === `post-${i}`
-                        ? "재생성 중..."
-                        : `부분 재생성 (${OPERATION_CREDIT_COST.PARAGRAPH_REGENERATE} 크레딧)`}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => copyPost(i)}
+                        className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-100"
+                      >
+                        {copiedPostIndex === i ? "복사됨" : "이 게시물 복사"}
+                      </button>
+                      <button
+                        onClick={() => regenerateField("post", i)}
+                        disabled={busy}
+                        className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-100 disabled:opacity-50"
+                      >
+                        {regeneratingField === `post-${i}`
+                          ? "재생성 중..."
+                          : `부분 재생성 (${OPERATION_CREDIT_COST.PARAGRAPH_REGENERATE} 크레딧)`}
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     rows={3}

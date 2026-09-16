@@ -113,7 +113,17 @@ export async function deletePhoto(
   revalidatePath(`/collaborations/${collaborationId}/photos`);
 }
 
-export async function savePhotoBlogToLibrary(input: { collaborationId: string; body: string }) {
+// STEP36 item 2: also persists the structured blogMeta (title/intro/closing/
+// hashtags) into the existing (previously-Instagram/Threads-only)
+// generation_input column, so it can be restored on refresh the same way
+// PlatformPanel restores parts — mirrors the saveContent/updateContent split.
+export type BlogMeta = { title: string; intro: string; closing: string; hashtags: string };
+
+export async function savePhotoBlogToLibrary(input: {
+  collaborationId: string;
+  body: string;
+  generationInput?: BlogMeta;
+}) {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -130,6 +140,7 @@ export async function savePhotoBlogToLibrary(input: { collaborationId: string; b
       body: input.body,
       status: "DRAFT",
       ai_provider: "claude",
+      generation_input: (input.generationInput ?? null) as never,
     })
     .select("id")
     .single();
@@ -138,4 +149,24 @@ export async function savePhotoBlogToLibrary(input: { collaborationId: string; b
 
   revalidatePath("/content-library");
   return { success: true as const, id: data.id };
+}
+
+export async function updatePhotoBlogInLibrary(input: {
+  contentId: string;
+  collaborationId: string;
+  body: string;
+  generationInput?: BlogMeta;
+}) {
+  if (!input.body.trim()) return { error: "저장할 내용이 없습니다." };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("contents")
+    .update({ body: input.body, generation_input: (input.generationInput ?? null) as never })
+    .eq("id", input.contentId);
+
+  if (error) return { error: `저장 실패: ${error.message}` };
+
+  revalidatePath("/content-library");
+  return { success: true as const, id: input.contentId };
 }

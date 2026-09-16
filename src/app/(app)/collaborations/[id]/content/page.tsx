@@ -4,10 +4,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { StudioTabs } from "./StudioTabs";
 import type { ContentPlatformKey, ReviewNotes } from "@/lib/ai/prompts";
 import type { PlatformParts } from "./PlatformPanel";
+import type { BlogMeta } from "../photos/actions";
 import type { ContentStatus } from "@/types/database";
 
 const BUCKET = "collaboration-photos";
 const STUDIO_PLATFORMS: ContentPlatformKey[] = ["INSTAGRAM_FEED", "THREADS"];
+const BLOG_PLATFORM = "NAVER_BLOG";
 
 export default async function CollaborationContentPage({
   params,
@@ -45,7 +47,7 @@ export default async function CollaborationContentPage({
     .from("contents")
     .select("id, platform, body, status, generation_input")
     .eq("collaboration_id", id)
-    .in("platform", STUDIO_PLATFORMS)
+    .in("platform", [...STUDIO_PLATFORMS, BLOG_PLATFORM])
     .order("created_at", { ascending: false });
 
   const initialContents: Partial<
@@ -62,6 +64,15 @@ export default async function CollaborationContentPage({
       };
     }
   }
+
+  const latestBlog = existingContents?.find((c) => c.platform === BLOG_PLATFORM);
+  const initialBlog = latestBlog
+    ? {
+        id: latestBlog.id,
+        body: latestBlog.body ?? "",
+        generationInput: (latestBlog.generation_input as BlogMeta | null) ?? null,
+      }
+    : undefined;
 
   const { data: photos } = await supabase
     .from("collaboration_photos")
@@ -111,6 +122,7 @@ export default async function CollaborationContentPage({
           initialReviewNotes={(collaboration.review_notes as ReviewNotes | null) ?? {}}
           initialInstagram={initialContents.INSTAGRAM_FEED}
           initialThreads={initialContents.THREADS}
+          initialBlog={initialBlog}
           collaborationInfo={{
             brandName: collaboration.brand_name,
             productName: collaboration.product_name,
