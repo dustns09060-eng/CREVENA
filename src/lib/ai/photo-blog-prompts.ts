@@ -1,6 +1,7 @@
 import type { PhotoType } from "@/types/database";
 import { PHOTO_TYPES } from "@/lib/photo-type";
 import type { ReviewNotes, StyleSample } from "./prompts";
+import type { ResponseSchema } from "./types";
 
 export function parseJsonResponse<T>(text: string): T {
   const cleaned = text
@@ -23,6 +24,19 @@ export function parseJsonResponse<T>(text: string): T {
 const NO_FABRICATION_RULE =
   "사진에서 실제로 보이지 않는 사실이나 사용자가 제공하지 않은 경험을 절대로 지어내지 마라.";
 
+export const photoAnalysisSchema: ResponseSchema = {
+  name: "submit_photo_analysis",
+  description: "분석한 사진의 유형과 설명을 제출한다.",
+  schema: {
+    type: "object",
+    properties: {
+      photo_type: { type: "string", enum: PHOTO_TYPES },
+      description: { type: "string", description: "사진에 실제로 보이는 내용을 2~3문장으로" },
+    },
+    required: ["photo_type", "description"],
+  },
+};
+
 export function buildPhotoAnalysisPrompt() {
   const systemPrompt = [
     "너는 협찬 제품 사진을 분석하는 어시스턴트다.",
@@ -36,11 +50,10 @@ export function buildPhotoAnalysisPrompt() {
     "5) 사람이 실제로 사용 중인 모습인가? 성인이면 USAGE, 아이면 KID_USAGE.",
     "6) 여러 요소를 완성된 형태로 함께 보여주는 전체컷/결과컷인가? → FINAL_SHOT.",
     "7) 위 어디에도 해당하지 않으면 OTHER.",
-    "반드시 아래 JSON 형식으로만 답하라. 다른 텍스트를 추가하지 마라.",
-    '{"photo_type": "...", "description": "사진에 실제로 보이는 내용을 2~3문장으로"}',
+    "분석 결과는 submit_photo_analysis 도구를 호출해서 제출하라.",
   ].join("\n");
 
-  return { systemPrompt, prompt: "이 사진을 분석해줘." };
+  return { systemPrompt, prompt: "이 사진을 분석해줘.", responseSchema: photoAnalysisSchema };
 }
 
 export type PhotoSummary = {
@@ -50,12 +63,23 @@ export type PhotoSummary = {
   memo?: string | null;
 };
 
+export const photoOrderSchema: ResponseSchema = {
+  name: "submit_photo_order",
+  description: "추천하는 사진 배치 순서를 photoId 배열로 제출한다.",
+  schema: {
+    type: "object",
+    properties: {
+      order: { type: "array", items: { type: "string" }, description: "photoId를 추천 순서대로 나열" },
+    },
+    required: ["order"],
+  },
+};
+
 export function buildPhotoOrderPrompt(photos: PhotoSummary[]) {
   const systemPrompt = [
     "너는 블로그 글의 사진 배치 순서를 추천하는 어시스턴트다.",
     "일반적인 협찬 후기 블로그 흐름(제품 소개 → 패키지/구성품 → 디테일 → 사용 모습 → 완성/결과)을 참고해 사진 순서를 정하라.",
-    "반드시 아래 JSON 형식으로만 답하라.",
-    '{"order": ["photoId1", "photoId2", ...]}',
+    "추천 순서는 submit_photo_order 도구를 호출해서 제출하라.",
   ].join("\n");
 
   const list = photos
@@ -64,7 +88,7 @@ export function buildPhotoOrderPrompt(photos: PhotoSummary[]) {
 
   const prompt = `아래 사진 목록을 블로그 글 흐름에 맞는 순서로 정렬해줘.\n\n${list}`;
 
-  return { systemPrompt, prompt };
+  return { systemPrompt, prompt, responseSchema: photoOrderSchema };
 }
 
 export type PhotoBlogInput = {
@@ -92,6 +116,32 @@ const REVIEW_NOTE_LABELS: Record<keyof ReviewNotes, string> = {
   personalExperience: "개인적인 경험",
 };
 
+export const photoBlogSchema: ResponseSchema = {
+  name: "submit_photo_blog",
+  description: "사진 순서에 맞춰 완성한 블로그 글을 제출한다.",
+  schema: {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      intro: { type: "string" },
+      sections: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            photoId: { type: "string" },
+            body: { type: "string" },
+          },
+          required: ["photoId", "body"],
+        },
+      },
+      closing: { type: "string" },
+      hashtags: { type: "string" },
+    },
+    required: ["title", "intro", "sections", "closing", "hashtags"],
+  },
+};
+
 export function buildPhotoBlogPrompt(input: PhotoBlogInput) {
   const systemPrompt = [
     "너는 인플루언서의 협찬 블로그 글을 사진 순서에 맞춰 작성하는 어시스턴트다.",
@@ -109,8 +159,7 @@ export function buildPhotoBlogPrompt(input: PhotoBlogInput) {
     "",
     "각 사진의 AI 분석 결과와 사용자 메모를 참고해서 그 사진 자리에 들어갈 문단을 작성하라. 사용자 메모가 없으면 분석 결과만으로 담백하게 서술하라.",
     "필수 키워드가 있으면 본문 전체에 자연스럽게 녹여 포함하되, SEO를 위해 억지로 여러 번 반복해서 문장이 부자연스러워지지 않게 하라.",
-    "반드시 아래 JSON 형식으로만 답하라. 다른 텍스트를 추가하지 마라.",
-    '{"title": "...", "intro": "...", "sections": [{"photoId": "...", "body": "..."}], "closing": "...", "hashtags": "..."}',
+    "완성된 글은 submit_photo_blog 도구를 호출해서 제출하라.",
   ].join("\n");
 
   const collabLines = [
@@ -159,7 +208,7 @@ export function buildPhotoBlogPrompt(input: PhotoBlogInput) {
 
   promptParts.push("", "위 정보를 바탕으로 사진 순서에 맞춰 블로그 글을 작성해줘.");
 
-  return { systemPrompt, prompt: promptParts.join("\n") };
+  return { systemPrompt, prompt: promptParts.join("\n"), responseSchema: photoBlogSchema };
 }
 
 export type GuideCheckInput = {
@@ -169,11 +218,23 @@ export type GuideCheckInput = {
   presentPhotoTypes: PhotoType[];
 };
 
+export const guideCheckSchema: ResponseSchema = {
+  name: "submit_guide_check",
+  description: "가이드라인 검사 결과를 제출한다.",
+  schema: {
+    type: "object",
+    properties: {
+      missingKeywords: { type: "array", items: { type: "string" } },
+      notes: { type: "string", description: "가이드라인 위반 사항이나 개선 제안을 짧게" },
+    },
+    required: ["missingKeywords", "notes"],
+  },
+};
+
 export function buildGuideCheckPrompt(input: GuideCheckInput) {
   const systemPrompt = [
     "너는 협찬 콘텐츠가 가이드라인을 충족하는지 검사하는 어시스턴트다.",
-    "반드시 아래 JSON 형식으로만 답하라.",
-    '{"missingKeywords": ["..."], "notes": "가이드라인 위반 사항이나 개선 제안을 짧게"}',
+    "검사 결과는 submit_guide_check 도구를 호출해서 제출하라.",
   ].join("\n");
 
   const prompt = [
@@ -192,7 +253,7 @@ export function buildGuideCheckPrompt(input: GuideCheckInput) {
     "필수 키워드가 글에 실제로 포함되어 있는지, 가이드라인을 위반한 부분이 있는지 확인해줘.",
   ].join("\n");
 
-  return { systemPrompt, prompt };
+  return { systemPrompt, prompt, responseSchema: guideCheckSchema };
 }
 
 export type RegenerateMode = "REWRITE" | "NATURAL" | "SHORTER" | "LONGER";
@@ -218,14 +279,23 @@ export type SinglePhotoSectionInput = {
   currentBody?: string | null;
 };
 
+export const singlePhotoSectionSchema: ResponseSchema = {
+  name: "submit_photo_section",
+  description: "다시 작성한 문단 하나를 제출한다.",
+  schema: {
+    type: "object",
+    properties: { body: { type: "string" } },
+    required: ["body"],
+  },
+};
+
 export function buildSinglePhotoSectionPrompt(input: SinglePhotoSectionInput) {
   const systemPrompt = [
     "너는 인플루언서 협찬 블로그 글 중 사진 한 장에 대응하는 문단 하나만 (다시) 작성하는 어시스턴트다.",
     NO_FABRICATION_RULE,
     "블로그 다른 부분과 자연스럽게 이어지는 하나의 문단만 작성하라. 2~4문장이 적당하다.",
     REGENERATE_MODE_INSTRUCTIONS[input.mode],
-    "반드시 아래 JSON 형식으로만 답하라. 다른 텍스트를 추가하지 마라.",
-    '{"body": "..."}',
+    "작성한 문단은 submit_photo_section 도구를 호출해서 제출하라.",
   ].join("\n");
 
   const lines = [
@@ -265,5 +335,5 @@ export function buildSinglePhotoSectionPrompt(input: SinglePhotoSectionInput) {
 
   promptParts.push("", "위 정보를 바탕으로 이 사진에 대응하는 문단을 작성해줘.");
 
-  return { systemPrompt, prompt: promptParts.join("\n") };
+  return { systemPrompt, prompt: promptParts.join("\n"), responseSchema: singlePhotoSectionSchema };
 }

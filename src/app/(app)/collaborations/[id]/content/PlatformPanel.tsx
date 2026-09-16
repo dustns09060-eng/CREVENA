@@ -91,11 +91,14 @@ export const PlatformPanel = forwardRef<
     setError(null);
     setAiCheckNotes(null);
     try {
-      const { systemPrompt, prompt } = buildContentPrompt(platform, { ...collaborationInfo, reviewNotes });
+      const { systemPrompt, prompt, responseSchema } = buildContentPrompt(platform, {
+        ...collaborationInfo,
+        reviewNotes,
+      });
       const res = await fetch("/api/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, systemPrompt, operation: "CONTENT_GENERATE" }),
+        body: JSON.stringify({ prompt, systemPrompt, responseSchema, operation: "CONTENT_GENERATE" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "생성에 실패했습니다.");
@@ -125,14 +128,14 @@ export const PlatformPanel = forwardRef<
         platform === "INSTAGRAM_FEED"
           ? ({ platform: "INSTAGRAM_FEED", field: field as keyof InstagramParts, current: parts as InstagramParts } as const)
           : ({ platform: "THREADS", field: "post", postIndex: postIndex!, current: parts as ThreadsParts } as const);
-      const { systemPrompt, prompt } = buildFieldRegeneratePrompt(target, {
+      const { systemPrompt, prompt, responseSchema } = buildFieldRegeneratePrompt(target, {
         ...collaborationInfo,
         reviewNotes,
       });
       const res = await fetch("/api/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, systemPrompt, operation: "PARAGRAPH_REGENERATE" }),
+        body: JSON.stringify({ prompt, systemPrompt, responseSchema, operation: "PARAGRAPH_REGENERATE" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "재생성에 실패했습니다.");
@@ -194,7 +197,7 @@ export const PlatformPanel = forwardRef<
     setCheckingAi(true);
     setError(null);
     try {
-      const { systemPrompt, prompt } = buildGuideCheckPrompt({
+      const { systemPrompt, prompt, responseSchema } = buildGuideCheckPrompt({
         fullText: flatText,
         requiredKeywords: collaborationInfo.requiredKeywords,
         guideRawContent: collaborationInfo.guideRawContent,
@@ -203,7 +206,7 @@ export const PlatformPanel = forwardRef<
       const res = await fetch("/api/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, systemPrompt, operation: "GUIDE_CHECK" }),
+        body: JSON.stringify({ prompt, systemPrompt, responseSchema, operation: "GUIDE_CHECK" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "가이드 검사에 실패했습니다.");

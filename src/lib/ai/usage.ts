@@ -43,6 +43,6 @@ export function classifyErrorType(error: unknown): string {
   if (message.includes("429")) return "RATE_LIMITED";
   if (message.includes("401") || message.includes("403")) return "AUTH_ERROR";
   if (message.includes("Claude API 오류")) return "PROVIDER_ERROR";
-  if (message.includes("JSON")) return "PARSE_ERROR";
+  if (message.includes("JSON") || message.includes("tool_use")) return "PARSE_ERROR";
   return "UNKNOWN";
 }

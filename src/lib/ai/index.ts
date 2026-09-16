@@ -1,7 +1,7 @@
 import type { AIProvider } from "./types";
 import { ClaudeProvider } from "./providers/claude";
 
-export type { AIProvider, GenerateContentParams } from "./types";
+export type { AIProvider, GenerateContentParams, ResponseSchema } from "./types";
 
 export function getAIProvider(): AIProvider {
   const provider = process.env.AI_PROVIDER ?? "claude";

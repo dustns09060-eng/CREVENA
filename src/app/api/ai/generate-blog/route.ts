@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getAIProvider } from "@/lib/ai";
+import { getAIProvider, type ResponseSchema } from "@/lib/ai";
 import { logAiUsage, classifyErrorType } from "@/lib/ai/usage";
 import { checkAndConsumeAiCredits, refundAiCredits } from "@/lib/ai/usage-limits";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
+
+function isResponseSchema(value: unknown): value is ResponseSchema {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as ResponseSchema).name === "string" &&
+    typeof (value as ResponseSchema).schema === "object"
+  );
+}
 
 // Dedicated route (instead of sharing /api/ai/generate) so the 10-credit
 // cost of "사진 기반 블로그 전체 작성" is fixed by which endpoint was
@@ -58,6 +67,8 @@ export async function POST(request: Request) {
     );
   }
 
+  const responseSchema = isResponseSchema(body?.responseSchema) ? body.responseSchema : undefined;
+
   try {
     const aiProvider = getAIProvider();
     const maxTokens =
@@ -66,7 +77,19 @@ export async function POST(request: Request) {
       prompt,
       systemPrompt: typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
       maxTokens,
+      responseSchema,
     });
+
+    if (responseSchema) {
+      try {
+        JSON.parse(content);
+      } catch (parseError) {
+        throw new Error(
+          `AI 응답 JSON 파싱 실패: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+        );
+      }
+    }
+
     await logAiUsage(supabase, {
       userId: user.id,
       collaborationId,
@@ -82,7 +105,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ content });
   } catch (error) {
     await refundAiCredits(supabase, usageCheck.reservationId);
-    const message = error instanceof Error ? error.message : "블로그 작성에 실패했습니다.";
+    const errorType = classifyErrorType(error);
+    console.error(`[/api/ai/generate-blog] 실패 (${errorType}):`, error);
+    const message =
+      errorType === "PARSE_ERROR"
+        ? "콘텐츠 생성 중 형식 오류가 발생했습니다. 다시 시도해주세요."
+        : error instanceof Error
+          ? error.message
+          : "블로그 작성에 실패했습니다.";
     await logAiUsage(supabase, {
       userId: user.id,
       collaborationId,
@@ -91,7 +121,7 @@ export async function POST(request: Request) {
       provider,
       model,
       status: "failed",
-      errorType: classifyErrorType(error),
+      errorType,
       creditsUsed: 0,
     });
     return NextResponse.json({ error: message }, { status: 500 });
