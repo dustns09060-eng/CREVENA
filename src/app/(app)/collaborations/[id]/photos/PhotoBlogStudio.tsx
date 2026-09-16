@@ -1,8 +1,8 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { savePhotoBlogToLibrary } from "./actions";
+import { savePhotoBlogToLibrary, updatePhotoBlogInLibrary, type BlogMeta } from "./actions";
 import {
   buildPhotoBlogPrompt,
   buildGuideCheckPrompt,
@@ -78,6 +78,7 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
   collaborationInfo: CollaborationInfo;
   reviewNotes: ReviewNotes;
   guideAnalysis: GuideAnalysis | null;
+  initial?: { id: string; body: string; generationInput: BlogMeta | null };
   onStatusChange?: (status: PlatformStatus) => void;
 }>(function PhotoBlogStudio({
   collaborationId,
@@ -85,11 +86,16 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
   collaborationInfo,
   reviewNotes,
   guideAnalysis,
+  initial,
   onStatusChange,
 }, ref) {
   const router = useRouter();
   const { photos, excludePhotoIds, applyGeneratedSections, applyRegeneratedBody, handleBodyChange, handleBodyBlur } =
     photoManager;
+  // STEP36 item 22: synchronous guard against a rapid double-click starting
+  // two overlapping (and double-charging) blog writes before the `writing`
+  // state re-render disables the button.
+  const writingRef = useRef(false);
 
   const [writing, setWriting] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -98,12 +104,14 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
   const [error, setError] = useState<string | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
 
-  const [blogMeta, setBlogMeta] = useState<{
-    title: string;
-    intro: string;
-    closing: string;
-    hashtags: string;
-  } | null>(null);
+  const [blogMeta, setBlogMeta] = useState<BlogMeta | null>(initial?.generationInput ?? null);
+  // STEP36 item 6: reviewNotes snapshot at the last successful blog write.
+  const [generatedWithNotes, setGeneratedWithNotes] = useState<ReviewNotes | null>(null);
+  const reviewNotesStale =
+    generatedWithNotes !== null && JSON.stringify(reviewNotes) !== JSON.stringify(generatedWithNotes);
+  // Tracks the existing contents row so "저장" updates it instead of
+  // inserting a duplicate row each time (mirrors PlatformPanel's savedId).
+  const [savedId, setSavedId] = useState<string | null>(initial?.id ?? null);
   const [guideCheck, setGuideCheck] = useState<{ missingKeywords: string[]; notes: string } | null>(null);
   const [libraryDirty, setLibraryDirty] = useState(false);
   const { toastMessage, showToast } = useSaveToast();
@@ -150,12 +158,14 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
   }, [blogMeta, guideAnalysis, photos]);
 
   async function handleWriteBlog() {
+    if (writingRef.current) return;
     const usablePhotos = photos.filter((p) => !excludePhotoIds.has(p.id));
     if (usablePhotos.length === 0) {
       const err = new Error("블로그를 작성할 사진이 없습니다.");
       setError(err.message);
       throw err;
     }
+    writingRef.current = true;
     setWriting(true);
     setError(null);
     try {
@@ -196,7 +206,9 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
       }>(raw);
 
       setBlogMeta({ title: parsed.title, intro: parsed.intro, closing: parsed.closing, hashtags: parsed.hashtags });
+      setSavedId(null);
       setLibraryDirty(true);
+      setGeneratedWithNotes(reviewNotes);
       const editedIds = new Set(photos.filter((p) => p.body_edited).map((p) => p.id));
       const sectionsToApply = parsed.sections.filter((s) => !editedIds.has(s.photoId));
       await applyGeneratedSections(sectionsToApply);
@@ -205,6 +217,7 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
       setError(err instanceof Error ? err.message : "블로그 작성에 실패했습니다.");
       throw err;
     } finally {
+      writingRef.current = false;
       setWriting(false);
     }
   }
@@ -265,9 +278,12 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
     setError(null);
     try {
       const fullText = assembleFullText();
-      if (!fullText) throw new Error("먼저 블로그 글을 작성해주세요.");
-      const result = await savePhotoBlogToLibrary({ collaborationId, body: fullText });
+      if (!fullText || !blogMeta) throw new Error("먼저 블로그 글을 작성해주세요.");
+      const result = savedId
+        ? await updatePhotoBlogInLibrary({ contentId: savedId, collaborationId, body: fullText, generationInput: blogMeta })
+        : await savePhotoBlogToLibrary({ collaborationId, body: fullText, generationInput: blogMeta });
       if ("error" in result) throw new Error(result.error);
+      setSavedId(result.id);
       setLibraryDirty(false);
       showToast("저장되었습니다.");
     } catch (err) {
@@ -340,6 +356,12 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
         CREVENA는 사진 설명을 단순 나열하지 않고 실제 사용 경험이 자연스럽게 이어지는 스토리형 블로그
         글을 작성합니다. (문제 제기 → 사용 계기 → 제품 등장 → 실제 사용 → 변화·느낀점 → 추천 대상)
       </p>
+
+      {reviewNotesStale && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          △ &quot;내 경험 추가하기&quot; 내용이 수정되었습니다. &quot;다시 작성&quot;하면 최신 내용이 반영됩니다.
+        </p>
+      )}
 
       {error && (
         <p className="whitespace-pre-wrap rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

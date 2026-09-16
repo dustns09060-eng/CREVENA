@@ -12,9 +12,13 @@ import type { PhotoManager } from "../photos/usePhotoManager";
 export function PhotoSection({
   manager,
   requiredPhotoCount,
+  minimumPhotos,
 }: {
   manager: PhotoManager;
   requiredPhotoCount: number | null;
+  // STEP36 item 9: the guide's structured minimum photo count (when known),
+  // passed through so exclude-suggestion never drops usable photos below it.
+  minimumPhotos?: number | null;
 }) {
   const {
     photos,
@@ -25,6 +29,7 @@ export function PhotoSection({
     ordering,
     busy,
     excludePhotoIds,
+    orderStale,
     handleAddPhotos,
     handleAnalyzeAll,
     handleSuggestOrder,
@@ -57,6 +62,22 @@ export function PhotoSection({
       {requiredPhotoCount && requiredPhotoCount > 0 && photos.length < requiredPhotoCount && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           필수 사진 수({requiredPhotoCount}장) 중 {photos.length}장만 업로드되었습니다.
+        </p>
+      )}
+      {/* STEP36 item 16: separately surfaces the AI가 가이드 텍스트에서 직접 추출한
+          최소 사진 수 — requiredPhotoCount above comes from a manually-entered
+          collaboration field, this one from the guide text itself, and the
+          two can disagree. */}
+      {minimumPhotos && minimumPhotos > 0 && photos.length < minimumPhotos && (
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          가이드에서 사진 {minimumPhotos}장 이상을 요구하지만 현재 {photos.length}장이 업로드되어 있습니다.{" "}
+          {minimumPhotos - photos.length}장을 추가해주세요.
+        </p>
+      )}
+      {orderStale && (
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          △ 사진이 추가/삭제되어 순서·대표사진·제외 추천이 최신 상태가 아닐 수 있습니다. &quot;사진
+          순서/대표사진 추천&quot;을 다시 실행해주세요.
         </p>
       )}
 
@@ -97,7 +118,7 @@ export function PhotoSection({
             </div>
             <div className="flex items-center gap-1.5">
               <button
-                onClick={handleSuggestOrder}
+                onClick={() => handleSuggestOrder(minimumPhotos)}
                 disabled={busy || photos.length < 2}
                 className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
               >
