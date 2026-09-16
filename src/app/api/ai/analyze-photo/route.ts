@@ -78,14 +78,22 @@ export async function POST(request: Request) {
     const base64Data = Buffer.from(buffer).toString("base64");
 
     const aiProvider = getAIProvider();
-    const { systemPrompt, prompt } = buildPhotoAnalysisPrompt();
+    const { systemPrompt, prompt, responseSchema } = buildPhotoAnalysisPrompt();
     const { content: raw, usage } = await aiProvider.generateContent({
       systemPrompt,
       prompt,
       images: [{ mediaType: "image/jpeg", base64Data }],
+      responseSchema,
     });
 
-    const parsed = parseJsonResponse<{ photo_type: string; description: string }>(raw);
+    let parsed: { photo_type: string; description: string };
+    try {
+      parsed = parseJsonResponse<{ photo_type: string; description: string }>(raw);
+    } catch (parseError) {
+      throw new Error(
+        `AI 응답 JSON 파싱 실패: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+      );
+    }
     const photoType: PhotoType = PHOTO_TYPES.includes(parsed.photo_type as PhotoType)
       ? (parsed.photo_type as PhotoType)
       : "OTHER";
@@ -111,7 +119,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ photoType, description: parsed.description });
   } catch (error) {
     await refundAiCredits(supabase, usageCheck.reservationId);
-    const message = error instanceof Error ? error.message : "사진 분석에 실패했습니다.";
+    const errorType = classifyErrorType(error);
+    console.error(`[/api/ai/analyze-photo] 실패 (${errorType}):`, error);
+    const message =
+      errorType === "PARSE_ERROR"
+        ? "콘텐츠 생성 중 형식 오류가 발생했습니다. 다시 시도해주세요."
+        : error instanceof Error
+          ? error.message
+          : "사진 분석에 실패했습니다.";
     await logAiUsage(supabase, {
       userId: user.id,
       collaborationId: photo.collaboration_id,
@@ -120,7 +135,7 @@ export async function POST(request: Request) {
       provider,
       model,
       status: "failed",
-      errorType: classifyErrorType(error),
+      errorType,
       creditsUsed: 0,
     });
     return NextResponse.json({ error: message }, { status: 500 });

@@ -1,3 +1,5 @@
+import type { ResponseSchema } from "./types";
+
 // STEP33: this file used to also generate NAVER_BLOG as plain text, but the
 // unified 콘텐츠 제작실's "블로그" tab is exclusively the photo-based blog
 // flow from STEP16 (src/lib/ai/photo-blog-prompts.ts) — sections tied to
@@ -110,8 +112,7 @@ const PLATFORM_STRUCTURE_INSTRUCTIONS: Record<ContentPlatformKey, string> = {
     "body: 자연스러운 실제 사용 경험과 핵심 장점, 가이드에 필수로 들어가야 할 내용(광고 표시 문구 포함) — 광고처럼 느껴지지 않게 자연스럽게.",
     "cta: 마지막 행동 유도 문장 (예: 저장하기, 더 궁금하면 댓글로).",
     "hashtags: 필수 해시태그를 포함한 해시태그 목록 (공백으로 구분).",
-    "반드시 아래 JSON 형식으로만 답하라. 다른 텍스트를 추가하지 마라.",
-    '{"hook": "...", "body": "...", "cta": "...", "hashtags": "..."}',
+    "submit_instagram_post 도구를 호출해서 제출하라.",
   ].join("\n"),
   THREADS: [
     "Threads 게시글을 작성하라.",
@@ -119,9 +120,40 @@ const PLATFORM_STRUCTURE_INSTRUCTIONS: Record<ContentPlatformKey, string> = {
     "친근한 말투, 짧은 문장을 쓰고 광고 문구는 최소화하라.",
     "보통은 하나의 포스트(posts 배열에 항목 1개)로 충분하다. 내용이 자연스럽게 여러 개로 나뉘는 게 더 나을 때만(예: 쓰레드 형태의 이어말하기) 2~3개로 나눠라.",
     "각 포스트는 Threads 특성상 짧게(대략 2~4문장) 유지하라.",
-    "반드시 아래 JSON 형식으로만 답하라. 다른 텍스트를 추가하지 마라.",
-    '{"posts": ["..."]}',
+    "submit_threads_post 도구를 호출해서 제출하라.",
   ].join("\n"),
+};
+
+// Forced tool-use schemas per platform (see ResponseSchema doc in types.ts) —
+// this is what actually prevents the STEP34 "Expected ',' or '}'" failures:
+// the API constrains the model's output to this shape before we ever see it,
+// instead of us regexing a hoped-for JSON blob out of free text.
+const CONTENT_RESPONSE_SCHEMAS: Record<ContentPlatformKey, ResponseSchema> = {
+  INSTAGRAM_FEED: {
+    name: "submit_instagram_post",
+    description: "작성한 Instagram Feed 게시글을 4개 필드로 제출한다.",
+    schema: {
+      type: "object",
+      properties: {
+        hook: { type: "string" },
+        body: { type: "string" },
+        cta: { type: "string" },
+        hashtags: { type: "string" },
+      },
+      required: ["hook", "body", "cta", "hashtags"],
+    },
+  },
+  THREADS: {
+    name: "submit_threads_post",
+    description: "작성한 Threads 포스트 목록을 제출한다.",
+    schema: {
+      type: "object",
+      properties: {
+        posts: { type: "array", items: { type: "string" }, minItems: 1 },
+      },
+      required: ["posts"],
+    },
+  },
 };
 
 export function buildContentPrompt(platform: ContentPlatformKey, input: ContentGenerationInput) {
@@ -137,7 +169,11 @@ export function buildContentPrompt(platform: ContentPlatformKey, input: ContentG
   const promptParts = buildContextBlock(input, styleSamplesText);
   promptParts.push("", "위 정보를 바탕으로 글을 작성해줘.");
 
-  return { systemPrompt, prompt: promptParts.join("\n") };
+  return {
+    systemPrompt,
+    prompt: promptParts.join("\n"),
+    responseSchema: CONTENT_RESPONSE_SCHEMAS[platform],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -159,10 +195,20 @@ const INSTAGRAM_FIELD_LABELS: Record<InstagramField, string> = {
   hashtags: "hashtags (해시태그 목록)",
 };
 
+export const fieldRegenerateSchema: ResponseSchema = {
+  name: "submit_field_value",
+  description: "다시 작성한 값 하나를 제출한다.",
+  schema: {
+    type: "object",
+    properties: { value: { type: "string" } },
+    required: ["value"],
+  },
+};
+
 export function buildFieldRegeneratePrompt(
   target: RegenerateField,
   input: ContentGenerationInput,
-): { systemPrompt: string; prompt: string } {
+): { systemPrompt: string; prompt: string; responseSchema: ResponseSchema } {
   const styleSamplesText = formatStyleSamples(input.styleSamples);
   const contextLines = buildContextBlock(input, styleSamplesText);
 
@@ -171,8 +217,7 @@ export function buildFieldRegeneratePrompt(
       COMMON_RULES,
       `너는 이미 작성된 Instagram 게시글 중 "${INSTAGRAM_FIELD_LABELS[target.field]}" 부분만 다시 작성한다.`,
       "다른 필드는 그대로 두고 요청받은 필드 하나만 새로 작성하라. 나머지 필드와 자연스럽게 이어져야 한다.",
-      "반드시 아래 JSON 형식으로만 답하라. 다른 텍스트를 추가하지 마라.",
-      '{"value": "..."}',
+      "새로 작성한 값은 submit_field_value 도구를 호출해서 제출하라.",
     ].join("\n");
     const prompt = [
       ...contextLines,
@@ -185,7 +230,7 @@ export function buildFieldRegeneratePrompt(
       "",
       `"${target.field}" 필드만 새로 작성해줘.`,
     ].join("\n");
-    return { systemPrompt, prompt };
+    return { systemPrompt, prompt, responseSchema: fieldRegenerateSchema };
   }
 
   // THREADS post regenerate
@@ -193,8 +238,7 @@ export function buildFieldRegeneratePrompt(
     COMMON_RULES,
     PLATFORM_STRUCTURE_INSTRUCTIONS.THREADS,
     "이미 작성된 여러 포스트 중 지정된 포스트 하나만 다시 작성하라. 다른 포스트는 그대로 두고 참고만 하라.",
-    "반드시 아래 JSON 형식으로만 답하라. 다른 텍스트를 추가하지 마라.",
-    '{"value": "..."}',
+    "새로 작성한 값은 submit_field_value 도구를 호출해서 제출하라.",
   ].join("\n");
   const prompt = [
     ...contextLines,
@@ -204,5 +248,5 @@ export function buildFieldRegeneratePrompt(
     "",
     `${target.postIndex + 1}번째 포스트만 새로 작성해줘.`,
   ].join("\n");
-  return { systemPrompt, prompt };
+  return { systemPrompt, prompt, responseSchema: fieldRegenerateSchema };
 }

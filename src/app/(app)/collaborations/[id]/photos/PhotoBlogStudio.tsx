@@ -23,6 +23,7 @@ import {
   type RegenerateMode,
 } from "@/lib/ai/photo-blog-prompts";
 import type { ReviewNotes, StyleSample } from "@/lib/ai/prompts";
+import type { ResponseSchema } from "@/lib/ai/types";
 import { updateReviewNotes } from "@/lib/actions/review-notes";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
 import type { CollaborationPhoto, PhotoType } from "@/types/database";
@@ -59,6 +60,10 @@ async function callGenerate(args: {
   collaborationId: string;
   maxTokens?: number;
   operation?: string;
+  // Forces the model to answer via Claude's tool-use so the response is
+  // guaranteed valid JSON matching this shape (see ResponseSchema in
+  // src/lib/ai/types.ts) instead of relying on free-text JSON.parse.
+  responseSchema?: ResponseSchema;
   // ORDER_SUGGEST/BLOG_WRITE cost more than the other operations, so they
   // go through their own endpoint where the server fixes the credit cost
   // (see src/app/api/ai/suggest-order and generate-blog) instead of the
@@ -245,11 +250,12 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
         photoType: p.photo_type,
         description: p.ai_analysis ?? "(분석 전)",
       }));
-      const { systemPrompt, prompt } = buildPhotoOrderPrompt(summaries);
+      const { systemPrompt, prompt, responseSchema } = buildPhotoOrderPrompt(summaries);
       const raw = await callGenerate({
         systemPrompt,
         prompt,
         collaborationId,
+        responseSchema,
         endpoint: "/api/ai/suggest-order",
       });
       const parsed = parseJsonResponse<{ order: string[] }>(raw);
@@ -277,7 +283,7 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
         description: p.ai_analysis ?? "(분석 전)",
         memo: p.user_memo,
       }));
-      const { systemPrompt, prompt } = buildPhotoBlogPrompt({
+      const { systemPrompt, prompt, responseSchema } = buildPhotoBlogPrompt({
         brandName: collaborationInfo.brandName,
         productName: collaborationInfo.productName,
         campaignName: collaborationInfo.campaignName,
@@ -298,6 +304,7 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
         prompt,
         collaborationId,
         maxTokens,
+        responseSchema,
         endpoint: "/api/ai/generate-blog",
       });
       const parsed = parseJsonResponse<{
@@ -346,13 +353,19 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
       const presentTypes = Array.from(
         new Set(photos.map((p) => p.photo_type).filter(Boolean) as PhotoType[]),
       );
-      const { systemPrompt, prompt } = buildGuideCheckPrompt({
+      const { systemPrompt, prompt, responseSchema } = buildGuideCheckPrompt({
         fullText,
         requiredKeywords: collaborationInfo.requiredKeywords,
         guideRawContent: collaborationInfo.guideRawContent,
         presentPhotoTypes: presentTypes,
       });
-      const raw = await callGenerate({ systemPrompt, prompt, collaborationId, operation: "GUIDE_CHECK" });
+      const raw = await callGenerate({
+        systemPrompt,
+        prompt,
+        collaborationId,
+        responseSchema,
+        operation: "GUIDE_CHECK",
+      });
       const parsed = parseJsonResponse<{ missingKeywords: string[]; notes: string }>(raw);
       setGuideCheck(parsed);
       router.refresh();
@@ -412,7 +425,7 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
     setRegeneratingId(photo.id);
     setError(null);
     try {
-      const { systemPrompt, prompt } = buildSinglePhotoSectionPrompt({
+      const { systemPrompt, prompt, responseSchema } = buildSinglePhotoSectionPrompt({
         brandName: collaborationInfo.brandName,
         productName: collaborationInfo.productName,
         requiredKeywords: collaborationInfo.requiredKeywords,
@@ -431,6 +444,7 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
         systemPrompt,
         prompt,
         collaborationId,
+        responseSchema,
         operation: "PARAGRAPH_REGENERATE",
       });
       const parsed = parseJsonResponse<{ body: string }>(raw);
