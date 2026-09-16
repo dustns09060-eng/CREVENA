@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   uploadPhoto,
@@ -76,17 +76,27 @@ async function callGenerate(args: {
   return data.content as string;
 }
 
-export function PhotoBlogStudio({
-  collaborationId,
-  initialPhotos,
-  collaborationInfo,
-  initialReviewNotes,
-}: {
+// STEP33: exposed so the unified 콘텐츠 제작실's "한 번에 생성" bulk action
+// can trigger the blog write step alongside Instagram/Threads generation,
+// each isolated (Promise.allSettled) so one platform failing doesn't affect
+// another. Requires photos already uploaded — callers should check that
+// themselves (see StudioTabs) since this component doesn't gate on it.
+export type PhotoBlogStudioHandle = {
+  generate: () => Promise<void>;
+  isDirty: () => boolean;
+};
+
+export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
   collaborationId: string;
   initialPhotos: PhotoWithUrl[];
   collaborationInfo: CollaborationInfo;
   initialReviewNotes: ReviewNotes;
-}) {
+}>(function PhotoBlogStudio({
+  collaborationId,
+  initialPhotos,
+  collaborationInfo,
+  initialReviewNotes,
+}, ref) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragIndexRef = useRef<number | null>(null);
@@ -319,10 +329,13 @@ export function PhotoBlogStudio({
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "블로그 작성에 실패했습니다.");
+      throw err;
     } finally {
       setWriting(false);
     }
   }
+
+  useImperativeHandle(ref, () => ({ generate: handleWriteBlog, isDirty: () => libraryDirty }));
 
   async function handleGuideCheck() {
     setChecking(true);
@@ -726,4 +739,4 @@ export function PhotoBlogStudio({
       )}
     </div>
   );
-}
+});

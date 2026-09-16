@@ -13,6 +13,11 @@ export async function saveContent(input: {
   collaborationId: string;
   platform: ContentPlatformKey;
   body: string;
+  // Structured per-field parts (InstagramParts / ThreadsParts) so the
+  // editable UI can be restored on refresh without re-parsing the flattened
+  // body text. Reuses the existing (previously unused) generation_input
+  // column instead of adding new schema.
+  generationInput?: unknown;
 }): Promise<ActionResult> {
   const supabase = await createSupabaseServerClient();
   const {
@@ -46,6 +51,7 @@ export async function saveContent(input: {
       body: input.body,
       status: "DRAFT",
       ai_provider: "claude",
+      generation_input: (input.generationInput ?? null) as never,
     })
     .select("id")
     .single();
@@ -60,13 +66,14 @@ export async function updateContent(input: {
   contentId: string;
   collaborationId: string;
   body: string;
+  generationInput?: unknown;
 }): Promise<ActionResult> {
   if (!input.body.trim()) return { error: "저장할 내용이 없습니다." };
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase
     .from("contents")
-    .update({ body: input.body })
+    .update({ body: input.body, generation_input: (input.generationInput ?? null) as never })
     .eq("id", input.contentId);
 
   if (error) return { error: `저장 실패: ${error.message}` };

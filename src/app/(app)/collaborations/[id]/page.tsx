@@ -14,8 +14,7 @@ import { StatusStepper } from "./StatusStepper";
 const TABS = [
   { key: "info", label: "기본정보" },
   { key: "guide", label: "가이드" },
-  { key: "content", label: "콘텐츠" },
-  { key: "photos", label: "사진" },
+  { key: "content", label: "콘텐츠 제작실" },
   { key: "schedule", label: "일정" },
   { key: "payment", label: "정산" },
   { key: "memo", label: "메모" },
@@ -171,27 +170,14 @@ export default async function CollaborationDetailPage({
         {tab === "content" && (
           <div>
             <p className="text-sm text-zinc-500">
-              협찬 정보를 바탕으로 Instagram Feed / Naver Blog / Threads 콘텐츠를 만듭니다.
+              협찬 정보와 업로드한 사진을 공유 컨텍스트로 사용해 블로그 / Instagram / Threads 콘텐츠를
+              한 곳에서 만듭니다.
             </p>
             <Link
               href={`/collaborations/${id}/content`}
               className="mt-3 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
             >
-              AI 콘텐츠 만들기
-            </Link>
-          </div>
-        )}
-
-        {tab === "photos" && (
-          <div>
-            <p className="text-sm text-zinc-500">
-              여러 장의 사진을 업로드하면 AI가 분석해서 순서를 추천하고, 사진별로 블로그 글을 작성합니다.
-            </p>
-            <Link
-              href={`/collaborations/${id}/photos`}
-              className="mt-3 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-            >
-              사진 기반 블로그 작성
+              콘텐츠 제작실 열기
             </Link>
           </div>
         )}
