@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   buildContentPrompt,
@@ -15,10 +15,19 @@ import {
 } from "@/lib/ai/prompts";
 import { buildGuideCheckPrompt } from "@/lib/ai/photo-blog-prompts";
 import { parseJsonResponse } from "@/lib/ai/photo-blog-prompts";
-import { checkContentDeterministic, isDeterministicCheckPassing } from "@/lib/content-guide-check";
+import { checkContentDeterministic } from "@/lib/content-guide-check";
 import { CONTENT_STATUS_LABELS, CONTENT_STATUSES } from "@/lib/content-status";
 import { saveContent, updateContent, updateContentStatus } from "./actions";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
+import {
+  SaveStatusBadge,
+  Toast,
+  useSaveToast,
+  PlatformStatusPill,
+  GuideCheckList,
+  buildDeterministicGuideItems,
+  type PlatformStatus,
+} from "./studio-ui";
 import type { ContentStatus } from "@/types/database";
 
 export type PlatformParts = InstagramParts | ThreadsParts;
@@ -53,8 +62,12 @@ export const PlatformPanel = forwardRef<
     collaborationInfo: Omit<ContentGenerationInput, "reviewNotes">;
     reviewNotes: ReviewNotes;
     initial?: { id: string; body: string; status: ContentStatus; generationInput: PlatformParts | null };
+    onStatusChange?: (status: PlatformStatus) => void;
   }
->(function PlatformPanel({ platform, collaborationId, collaborationInfo, reviewNotes, initial }, ref) {
+>(function PlatformPanel(
+  { platform, collaborationId, collaborationInfo, reviewNotes, initial, onStatusChange },
+  ref,
+) {
   const router = useRouter();
   const [parts, setParts] = useState<PlatformParts>(initial?.generationInput ?? emptyParts(platform));
   const [savedId, setSavedId] = useState<string | null>(initial?.id ?? null);
@@ -67,10 +80,18 @@ export const PlatformPanel = forwardRef<
   const [error, setError] = useState<string | null>(null);
   const [aiCheckNotes, setAiCheckNotes] = useState<string | null>(null);
   const [checkingAi, setCheckingAi] = useState(false);
+  const { toastMessage, showToast } = useSaveToast();
 
   const hasContent = platform === "INSTAGRAM_FEED"
     ? Boolean((parts as InstagramParts).body)
     : (parts as ThreadsParts).posts.length > 0;
+
+  useEffect(() => {
+    onStatusChange?.(loading ? "GENERATING" : hasContent ? "DONE" : "EMPTY");
+    // onStatusChange identity may change per render on the parent; only the
+    // values below should re-trigger a status report.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, hasContent]);
 
   const flatText = useMemo(() => assembleText(platform, parts), [platform, parts]);
   const deterministicCheck = useMemo(
@@ -84,6 +105,18 @@ export const PlatformPanel = forwardRef<
           })
         : null,
     [hasContent, flatText, collaborationInfo],
+  );
+  const guideItems = useMemo(
+    () =>
+      deterministicCheck
+        ? buildDeterministicGuideItems(deterministicCheck, {
+            requiredKeywords: collaborationInfo.requiredKeywords,
+            requiredHashtags: collaborationInfo.requiredHashtags,
+            requiredMentions: collaborationInfo.requiredMentions,
+            adDisclosureText: collaborationInfo.adDisclosureText,
+          })
+        : [],
+    [deterministicCheck, collaborationInfo],
   );
 
   async function generate() {
@@ -169,6 +202,7 @@ export const PlatformPanel = forwardRef<
       if ("error" in result) throw new Error(result.error);
       setSavedId(result.id);
       setDirty(false);
+      showToast("저장되었습니다.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "저장에 실패했습니다.");
     } finally {
@@ -221,14 +255,24 @@ export const PlatformPanel = forwardRef<
 
   useImperativeHandle(ref, () => ({ generate, isDirty: () => dirty }));
 
+  const FIELD_LABELS: Record<keyof InstagramParts, string> = {
+    hook: "Hook",
+    body: "본문",
+    cta: "CTA",
+    hashtags: "해시태그",
+  };
+  // Prevents double-clicks across the panel's different async actions (full
+  // generate, per-field regenerate, save, AI guide check) from overlapping.
+  const anyRegenerating = regeneratingField !== null;
+  const busy = loading || anyRegenerating || saving || checkingAi;
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-zinc-900">{PLATFORM_LABELS[platform]}</h2>
-          {loading && <span className="text-xs text-zinc-400">생성중...</span>}
-          {!loading && savedId && !dirty && <span className="text-xs text-emerald-600">저장됨</span>}
-          {!loading && dirty && <span className="text-xs text-amber-600">저장 안 됨</span>}
+          <PlatformStatusPill status={loading ? "GENERATING" : hasContent ? "DONE" : "EMPTY"} />
+          {!loading && hasContent && <SaveStatusBadge state={dirty ? "dirty" : "saved"} />}
         </div>
         <div className="flex items-center gap-2">
           {savedId && (
@@ -247,140 +291,148 @@ export const PlatformPanel = forwardRef<
           <div className="flex flex-col items-end gap-0.5">
             <button
               onClick={generate}
-              disabled={loading}
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={busy}
+              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-50"
             >
-              {loading ? "생성중..." : hasContent ? "다시 생성" : "생성"}
+              {loading ? `${PLATFORM_LABELS[platform]} 작성 중...` : hasContent ? "다시 생성" : "생성"}
             </button>
             <span className="text-[10px] text-zinc-400">{OPERATION_CREDIT_COST.CONTENT_GENERATE} 크레딧 사용</span>
           </div>
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="whitespace-pre-wrap rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
 
       {hasContent && (
         <div className="flex flex-col gap-4">
-          {platform === "INSTAGRAM_FEED" ? (
-            (["hook", "body", "cta", "hashtags"] as (keyof InstagramParts)[]).map((field) => (
-              <div key={field} className="flex flex-col gap-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-zinc-500">
-                    {{ hook: "후킹 문구", body: "본문", cta: "CTA", hashtags: "해시태그" }[field]}
-                  </span>
-                  <button
-                    onClick={() => regenerateField(field)}
-                    disabled={regeneratingField === field}
-                    className="text-xs text-zinc-500 hover:text-zinc-900 hover:underline disabled:opacity-50"
-                  >
-                    {regeneratingField === field
-                      ? "재생성중..."
-                      : `이 부분만 재생성 (${OPERATION_CREDIT_COST.PARAGRAPH_REGENERATE} 크레딧)`}
-                  </button>
+          <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4">
+            {platform === "INSTAGRAM_FEED" ? (
+              (["hook", "body", "cta", "hashtags"] as (keyof InstagramParts)[]).map((field, i, arr) => (
+                <div
+                  key={field}
+                  className={`flex flex-col gap-1 ${i < arr.length - 1 ? "border-b border-zinc-100 pb-3" : ""}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-500">{FIELD_LABELS[field]}</span>
+                    <button
+                      onClick={() => regenerateField(field)}
+                      disabled={busy}
+                      className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-100 disabled:opacity-50"
+                    >
+                      {regeneratingField === field
+                        ? "재생성 중..."
+                        : `부분 재생성 (${OPERATION_CREDIT_COST.PARAGRAPH_REGENERATE} 크레딧)`}
+                    </button>
+                  </div>
+                  <textarea
+                    rows={field === "body" ? 5 : 2}
+                    value={(parts as InstagramParts)[field]}
+                    onChange={(e) => {
+                      setParts((prev) => ({ ...(prev as InstagramParts), [field]: e.target.value }));
+                      setDirty(true);
+                    }}
+                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                  />
                 </div>
-                <textarea
-                  rows={field === "body" ? 5 : 2}
-                  value={(parts as InstagramParts)[field]}
-                  onChange={(e) => {
-                    setParts((prev) => ({ ...(prev as InstagramParts), [field]: e.target.value }));
-                    setDirty(true);
-                  }}
-                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
-                />
-              </div>
-            ))
-          ) : (
-            (parts as ThreadsParts).posts.map((post, i) => (
-              <div key={i} className="flex flex-col gap-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-zinc-500">포스트 {i + 1}</span>
-                  <button
-                    onClick={() => regenerateField("post", i)}
-                    disabled={regeneratingField === `post-${i}`}
-                    className="text-xs text-zinc-500 hover:text-zinc-900 hover:underline disabled:opacity-50"
-                  >
-                    {regeneratingField === `post-${i}`
-                      ? "재생성중..."
-                      : `이 포스트만 재생성 (${OPERATION_CREDIT_COST.PARAGRAPH_REGENERATE} 크레딧)`}
-                  </button>
+              ))
+            ) : (
+              (parts as ThreadsParts).posts.map((post, i, arr) => (
+                <div
+                  key={i}
+                  className={`flex flex-col gap-1 ${i < arr.length - 1 ? "border-b border-zinc-100 pb-3" : ""}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-500">게시물 {i + 1}</span>
+                    <button
+                      onClick={() => regenerateField("post", i)}
+                      disabled={busy}
+                      className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-100 disabled:opacity-50"
+                    >
+                      {regeneratingField === `post-${i}`
+                        ? "재생성 중..."
+                        : `부분 재생성 (${OPERATION_CREDIT_COST.PARAGRAPH_REGENERATE} 크레딧)`}
+                    </button>
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={post}
+                    onChange={(e) => {
+                      setParts((prev) => {
+                        const next = [...(prev as ThreadsParts).posts];
+                        next[i] = e.target.value;
+                        return { posts: next };
+                      });
+                      setDirty(true);
+                    }}
+                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                  />
                 </div>
-                <textarea
-                  rows={3}
-                  value={post}
-                  onChange={(e) => {
-                    setParts((prev) => {
-                      const next = [...(prev as ThreadsParts).posts];
-                      next[i] = e.target.value;
-                      return { posts: next };
-                    });
-                    setDirty(true);
-                  }}
-                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
-                />
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={save}
-              disabled={saving || !dirty}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+              disabled={busy || !dirty}
+              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
             >
-              {saving ? "저장중..." : savedId ? "수정 저장" : "저장"}
+              {saving ? "저장 중..." : savedId ? "수정 저장" : "저장"}
             </button>
             <button
               onClick={copy}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+              disabled={busy}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
             >
               {copied ? "복사됨" : "전체 복사"}
             </button>
             <button
               onClick={runAiGuideCheck}
-              disabled={checkingAi}
+              disabled={busy}
               className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
             >
-              {checkingAi ? "검사중..." : `AI 가이드 검사 (${OPERATION_CREDIT_COST.GUIDE_CHECK} 크레딧)`}
+              {checkingAi ? "검사 중..." : `AI 가이드 검사 (${OPERATION_CREDIT_COST.GUIDE_CHECK} 크레딧)`}
             </button>
+            <Toast message={toastMessage} />
           </div>
 
-          {deterministicCheck && (
-            <div
-              className={`rounded-lg border px-3 py-2 text-xs ${
-                isDeterministicCheckPassing(deterministicCheck)
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-amber-200 bg-amber-50 text-amber-800"
-              }`}
-            >
-              <p className="font-medium">
-                {isDeterministicCheckPassing(deterministicCheck) ? "가이드 항목 충족" : "가이드 항목 일부 미충족"}
-                {" · "}
-                {deterministicCheck.charCount}자
-              </p>
-              {deterministicCheck.missingKeywords.length > 0 && (
-                <p>누락된 필수 키워드: {deterministicCheck.missingKeywords.join(", ")}</p>
+          {(guideItems.length > 0 || aiCheckNotes) && (
+            <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4">
+              <p className="text-xs font-semibold text-zinc-500">가이드 검사 결과</p>
+              {guideItems.length > 0 && (
+                <div>
+                  <GuideCheckList items={guideItems} />
+                  <p className="mt-1.5 text-[11px] text-zinc-400">{deterministicCheck?.charCount}자</p>
+                </div>
               )}
-              {deterministicCheck.missingHashtags.length > 0 && (
-                <p>누락된 필수 해시태그: {deterministicCheck.missingHashtags.join(", ")}</p>
+              {aiCheckNotes && (
+                <div className="border-t border-zinc-100 pt-3">
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-amber-600">
+                    <span aria-hidden>△</span> AI 세부 검토 의견
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-zinc-600">{aiCheckNotes}</p>
+                </div>
               )}
-              {deterministicCheck.missingMentions.length > 0 && (
-                <p>누락된 필수 계정 태그: {deterministicCheck.missingMentions.join(", ")}</p>
-              )}
-              {deterministicCheck.hasAdDisclosure === false && <p>광고 표시 문구가 포함되지 않았습니다.</p>}
-            </div>
-          )}
-
-          {aiCheckNotes && (
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
-              <p className="font-medium text-zinc-900">AI 가이드 검사 결과</p>
-              <p className="mt-1 whitespace-pre-wrap">{aiCheckNotes}</p>
             </div>
           )}
         </div>
       )}
 
       {!hasContent && !loading && (
-        <p className="text-sm text-zinc-400">아직 생성된 콘텐츠가 없습니다. &quot;생성&quot;을 눌러주세요.</p>
+        <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-6 py-8 text-center">
+          <p className="text-sm text-zinc-500">
+            아직 작성된 {PLATFORM_LABELS[platform]} 콘텐츠가 없습니다. &quot;생성&quot;을 눌러 시작하세요.
+          </p>
+        </div>
+      )}
+      {!hasContent && loading && (
+        <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-6 py-8 text-center">
+          <p className="text-sm text-zinc-500">{PLATFORM_LABELS[platform]} 작성 중입니다. 잠시만 기다려주세요...</p>
+        </div>
       )}
     </div>
   );
