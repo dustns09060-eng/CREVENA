@@ -16,7 +16,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       <header className="border-b border-zinc-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex flex-wrap items-center gap-4">
-            <span className="text-sm font-bold text-zinc-900">CreatorFlow 관리자</span>
+            <span className="text-sm font-bold text-zinc-900">CREVENA 관리자</span>
             <nav className="flex gap-1 overflow-x-auto">
               {ADMIN_NAV.map((item) => (
                 <Link

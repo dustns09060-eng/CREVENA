@@ -106,7 +106,7 @@ export async function POST(request: Request) {
     const chargeResult = await paymentClient.payWithBillingKey({
       paymentId,
       billingKey,
-      orderName: `CreatorFlow ${plan} 구독`,
+      orderName: `CREVENA ${plan} 구독`,
       amount: { total: amount },
       currency: "KRW",
       customer: { id: user.id },

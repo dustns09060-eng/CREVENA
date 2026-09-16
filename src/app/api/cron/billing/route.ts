@@ -156,7 +156,7 @@ export async function POST(request: Request) {
       await paymentClient.payWithBillingKey({
         paymentId: claimedPaymentId,
         billingKey: sub.payment_subscription_id,
-        orderName: `CreatorFlow ${plan} 정기결제`,
+        orderName: `CREVENA ${plan} 정기결제`,
         amount: { total: amount },
         currency: "KRW",
         customer: { id: sub.id },

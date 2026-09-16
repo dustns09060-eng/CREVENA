@@ -37,7 +37,7 @@ export const PLAN_CONFIGS: Record<PlanTier, PlanConfig> = {
     partialRegenerateEnabled: false,
     contentRetention: "무제한 보관 (개수 제한 있음)",
     snsAutomationScope: "제공 예정 없음",
-    recommendedFor: "가입 후 CreatorFlow를 처음 써보는 분",
+    recommendedFor: "가입 후 CREVENA를 처음 써보는 분",
     highlights: [
       "텍스트 콘텐츠 생성 (Instagram/네이버블로그/Threads)",
       "협찬 최대 3건, 콘텐츠 최대 15건 저장",

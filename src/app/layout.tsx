@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CreatorFlow",
+  title: "CREVENA",
   description: "인플루언서 업무 자동화 프로그램",
 };
 

@@ -26,7 +26,7 @@ export async function startPlanUpgrade(
     channelKey,
     billingKeyMethod: "CARD",
     issueId: paymentId,
-    issueName: `CreatorFlow ${plan} 정기결제 카드 등록`,
+    issueName: `CREVENA ${plan} 정기결제 카드 등록`,
     customer: { customerId: userId },
   });
 

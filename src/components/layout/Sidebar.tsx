@@ -22,7 +22,7 @@ export function Sidebar() {
   return (
     <nav className="flex h-full flex-col gap-1 p-3">
       <div className="px-3 py-2 text-lg font-bold text-zinc-900 md:py-4">
-        CreatorFlow
+        CREVENA
       </div>
       <div className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
         {MENU_ITEMS.map((item) => {

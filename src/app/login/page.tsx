@@ -62,7 +62,7 @@ export default function LoginPage() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6"
       >
-        <h1 className="text-xl font-bold text-zinc-900">CreatorFlow</h1>
+        <h1 className="text-xl font-bold text-zinc-900">CREVENA</h1>
         <p className="mt-1 text-sm text-zinc-500">
           {mode === "signin" ? "로그인" : "회원가입"}
         </p>
