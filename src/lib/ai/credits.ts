@@ -11,7 +11,12 @@ export type AiOperation =
   | "ORDER_SUGGEST"
   | "GUIDE_CHECK"
   | "BLOG_WRITE"
-  | "PARAGRAPH_REGENERATE";
+  | "PARAGRAPH_REGENERATE"
+  // STEP35.5: extracts the structured guide (keywords, minimum photo/char
+  // counts, required phrases, etc.) from pasted brand guideline text. A new
+  // capability, not a repricing of anything above — every existing cost is
+  // unchanged.
+  | "GUIDE_ANALYZE";
 
 export const OPERATION_CREDIT_COST: Record<AiOperation, number> = {
   CONTENT_GENERATE: 1,
@@ -20,6 +25,7 @@ export const OPERATION_CREDIT_COST: Record<AiOperation, number> = {
   GUIDE_CHECK: 1,
   BLOG_WRITE: 10,
   PARAGRAPH_REGENERATE: 1,
+  GUIDE_ANALYZE: 2,
 };
 
 export function creditLabel(operation: AiOperation): string {

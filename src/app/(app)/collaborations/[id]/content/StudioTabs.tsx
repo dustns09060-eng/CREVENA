@@ -2,17 +2,31 @@
 
 import { useRef, useState } from "react";
 import { PhotoBlogStudio, type PhotoBlogStudioHandle } from "../photos/PhotoBlogStudio";
+import { usePhotoManager } from "../photos/usePhotoManager";
+import { PhotoSection } from "./PhotoSection";
 import { PlatformPanel, type PlatformPanelHandle, type PlatformParts } from "./PlatformPanel";
-import { SectionHeader, OptionalTag, PlatformStatusPill, type PlatformStatus } from "./studio-ui";
+import { GuideAnalysisCard } from "./GuideAnalysisCard";
+import {
+  SectionHeader,
+  Accordion,
+  OptionalTag,
+  PlatformStatusPill,
+  ProgressList,
+  type PlatformStatus,
+  type ProgressStep,
+} from "./studio-ui";
 import { updateReviewNotes } from "@/lib/actions/review-notes";
+import { updateGuideRawContent } from "@/lib/actions/guide";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
+import { buildGuideAnalysisPrompt, type GuideAnalysis } from "@/lib/ai/guide-analysis-prompts";
+import { parseJsonResponse } from "@/lib/ai/photo-blog-prompts";
 import type { ContentGenerationInput, ReviewNotes } from "@/lib/ai/prompts";
 import type { CollaborationPhoto, ContentStatus, PhotoType } from "@/types/database";
 
 type PhotoWithUrl = CollaborationPhoto & { fullUrl: string; thumbUrl: string };
 
-const REVIEW_NOTE_FIELDS: { key: keyof ReviewNotes; label: string; required?: boolean }[] = [
-  { key: "actualReview", label: "실제 사용 후기", required: true },
+const REVIEW_NOTE_FIELDS: { key: keyof ReviewNotes; label: string }[] = [
+  { key: "actualReview", label: "실제 사용 후기" },
   { key: "pros", label: "좋았던 점" },
   { key: "cons", label: "아쉬웠던 점" },
   { key: "kidsReaction", label: "아이 반응" },
@@ -37,6 +51,7 @@ export function StudioTabs({
   collaborationInfo,
   photoBlogInfo,
   initialPhotos,
+  initialGuideRawContent,
   initialReviewNotes,
   initialInstagram,
   initialThreads,
@@ -56,25 +71,30 @@ export function StudioTabs({
     styleSamples: { styleName: string; sampleText: string }[];
   };
   initialPhotos: PhotoWithUrl[];
+  initialGuideRawContent: string;
   initialReviewNotes: ReviewNotes;
   initialInstagram?: { id: string; body: string; status: ContentStatus; generationInput: PlatformParts | null };
   initialThreads?: { id: string; body: string; status: ContentStatus; generationInput: PlatformParts | null };
 }) {
   const [tab, setTab] = useState<TabKey>("BLOG");
   const [reviewNotes, setReviewNotes] = useState<ReviewNotes>(initialReviewNotes);
-  const [photoCount, setPhotoCount] = useState(initialPhotos.length);
+  const [guideText, setGuideText] = useState(initialGuideRawContent);
+  const [guideAnalysis, setGuideAnalysis] = useState<GuideAnalysis | null>(null);
+  const [guideError, setGuideError] = useState<string | null>(null);
+  const photoManager = usePhotoManager(collaborationId, initialPhotos);
   const [selected, setSelected] = useState<Record<StudioPlatform, boolean>>({
     BLOG: true,
     INSTAGRAM_FEED: true,
     THREADS: true,
   });
   const [platformStatus, setPlatformStatus] = useState<Record<StudioPlatform, PlatformStatus>>({
-    BLOG: initialPhotos.length > 0 && photoBlogInfo ? "EMPTY" : "EMPTY",
+    BLOG: "EMPTY",
     INSTAGRAM_FEED: initialInstagram ? "DONE" : "EMPTY",
     THREADS: initialThreads ? "DONE" : "EMPTY",
   });
-  const [bulkRunning, setBulkRunning] = useState(false);
-  const [bulkResult, setBulkResult] = useState<string | null>(null);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
+  const [pipelineSummary, setPipelineSummary] = useState<string | null>(null);
 
   const blogRef = useRef<PhotoBlogStudioHandle>(null);
   const igRef = useRef<PlatformPanelHandle>(null);
@@ -84,59 +104,194 @@ export function StudioTabs({
     updateReviewNotes(collaborationId, { ...reviewNotes, [key]: value });
   }
 
+  function handleGuideBlur(value: string) {
+    if (value === initialGuideRawContent) return;
+    updateGuideRawContent(collaborationId, value);
+  }
+
   function setStatus(platform: StudioPlatform, status: PlatformStatus) {
     setPlatformStatus((prev) => (prev[platform] === status ? prev : { ...prev, [platform]: status }));
   }
 
-  // Client-side estimate only, purely informational — it mirrors the fixed
-  // per-operation costs in src/lib/ai/credits.ts (never sent to the server;
-  // the actual charge is always computed server-side per route, unchanged).
+  async function analyzeGuide(): Promise<void> {
+    if (!guideText.trim()) return;
+    setGuideError(null);
+    try {
+      const { systemPrompt, prompt, responseSchema } = buildGuideAnalysisPrompt(guideText);
+      const res = await fetch("/api/ai/analyze-guide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ systemPrompt, prompt, responseSchema, collaborationId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "가이드 분석에 실패했습니다.");
+      const parsed = parseJsonResponse<GuideAnalysis>(data.content);
+      setGuideAnalysis(parsed);
+    } catch (err) {
+      setGuideError(err instanceof Error ? err.message : "가이드 분석에 실패했습니다.");
+      throw err;
+    }
+  }
+
+  const unanalyzedPhotoCount = photoManager.photos.filter((p) => !p.ai_analysis).length;
+
+  // Client-side estimate only, purely informational — mirrors the fixed
+  // per-operation costs in src/lib/ai/credits.ts. The server independently
+  // computes and charges the real cost per call; this number never travels
+  // to the server and can never change what gets charged (STEP35.5 item 18).
   const estimatedCredits =
-    (selected.BLOG && photoCount > 0 ? OPERATION_CREDIT_COST.BLOG_WRITE : 0) +
+    (guideText.trim() && !guideAnalysis ? OPERATION_CREDIT_COST.GUIDE_ANALYZE : 0) +
+    unanalyzedPhotoCount * OPERATION_CREDIT_COST.PHOTO_ANALYSIS +
+    (photoManager.photos.length >= 2 ? OPERATION_CREDIT_COST.ORDER_SUGGEST : 0) +
+    (selected.BLOG && photoManager.photos.length > 0 ? OPERATION_CREDIT_COST.BLOG_WRITE : 0) +
     (selected.INSTAGRAM_FEED ? OPERATION_CREDIT_COST.CONTENT_GENERATE : 0) +
     (selected.THREADS ? OPERATION_CREDIT_COST.CONTENT_GENERATE : 0);
   const selectedCount = (["BLOG", "INSTAGRAM_FEED", "THREADS"] as const).filter((k) => selected[k]).length;
 
-  // Each platform's generate() is called independently (Promise.allSettled),
-  // never merged into one prompt — a failure on one platform must never
-  // block or roll back the others (STEP33 요구사항: 실패 격리).
-  async function runBulkGenerate() {
-    setBulkRunning(true);
-    setBulkResult(null);
-    const jobs: { label: string; run: () => Promise<void> }[] = [];
-    if (selected.BLOG) {
-      if (photoCount === 0) {
-        setBulkResult((prev) => `${prev ?? ""}블로그: 사진이 없어 건너뜀. `);
+  // STEP35.5 item 15/16/17: one-click orchestration. Every step below just
+  // calls an existing, already-tested function (photoManager.*, each
+  // platform panel's exposed generate()) — no new AI call sites beyond guide
+  // analysis. A step failing never stops the pipeline or discards another
+  // step's success; Promise.allSettled still isolates platform generation
+  // exactly as STEP33 already guaranteed.
+  async function runOneClickPipeline() {
+    if (pipelineRunning) return;
+    setPipelineRunning(true);
+    setPipelineSummary(null);
+
+    const steps: ProgressStep[] = [
+      { key: "guide", label: "가이드 분석 중...", state: "pending" },
+      { key: "photoAnalyze", label: "사진 분석 중...", state: "pending" },
+      { key: "photoOrder", label: "사진 순서 정리 중...", state: "pending" },
+    ];
+    if (selected.BLOG) steps.push({ key: "blog", label: "블로그 작성 중...", state: "pending" });
+    if (selected.INSTAGRAM_FEED) steps.push({ key: "instagram", label: "Instagram 작성 중...", state: "pending" });
+    if (selected.THREADS) steps.push({ key: "threads", label: "Threads 작성 중...", state: "pending" });
+    steps.push({ key: "guideCheck", label: "가이드 확인 중...", state: "pending" });
+    steps.push({ key: "result", label: "콘텐츠 제작 완료", state: "pending" });
+    setProgressSteps(steps);
+
+    const update = (key: string, state: ProgressStep["state"], detail?: string) =>
+      setProgressSteps((prev) => prev.map((s) => (s.key === key ? { ...s, state, detail } : s)));
+
+    // STEP A: 가이드 분석
+    if (guideText.trim()) {
+      if (guideAnalysis) {
+        update("guide", "done", "(이미 분석됨)");
       } else {
-        jobs.push({ label: "블로그", run: () => blogRef.current!.generate() });
+        update("guide", "active");
+        try {
+          await analyzeGuide();
+          update("guide", "done");
+        } catch {
+          update("guide", "failed");
+        }
+      }
+    } else {
+      update("guide", "skipped");
+    }
+
+    // STEP B: 미분석 사진 분석 (이미 분석된 사진은 다시 분석하지 않음)
+    if (unanalyzedPhotoCount > 0) {
+      update("photoAnalyze", "active", `0/${unanalyzedPhotoCount}`);
+      try {
+        await photoManager.handleAnalyzeAll();
+        update("photoAnalyze", "done");
+      } catch {
+        update("photoAnalyze", "failed");
+      }
+    } else {
+      update("photoAnalyze", "skipped");
+    }
+
+    // STEP C: 사진 순서/대표사진 추천
+    if (photoManager.photos.length >= 2) {
+      update("photoOrder", "active");
+      try {
+        await photoManager.handleSuggestOrder();
+        update("photoOrder", "done");
+      } catch {
+        update("photoOrder", "failed");
+      }
+    } else {
+      update("photoOrder", "skipped");
+    }
+
+    // STEP D: 선택한 플랫폼 콘텐츠 생성 — Promise.allSettled로 서로 격리.
+    const jobs: { key: string; label: string; run: () => Promise<void> }[] = [];
+    if (selected.BLOG) {
+      if (photoManager.photos.length === 0) {
+        update("blog", "skipped", "(사진 없음)");
+      } else {
+        update("blog", "active");
+        jobs.push({ key: "blog", label: "블로그", run: () => blogRef.current!.generate() });
       }
     }
-    if (selected.INSTAGRAM_FEED) jobs.push({ label: "Instagram", run: () => igRef.current!.generate() });
-    if (selected.THREADS) jobs.push({ label: "Threads", run: () => threadsRef.current!.generate() });
+    if (selected.INSTAGRAM_FEED) {
+      update("instagram", "active");
+      jobs.push({ key: "instagram", label: "Instagram", run: () => igRef.current!.generate() });
+    }
+    if (selected.THREADS) {
+      update("threads", "active");
+      jobs.push({ key: "threads", label: "Threads", run: () => threadsRef.current!.generate() });
+    }
 
     const results = await Promise.allSettled(jobs.map((j) => j.run()));
-    const summary = results
-      .map((r, i) => `${jobs[i].label}: ${r.status === "fulfilled" ? "성공" : "실패"}`)
-      .join(" · ");
-    setBulkResult((prev) => `${prev ?? ""}${summary}`);
-    setBulkRunning(false);
+    results.forEach((r, i) => update(jobs[i].key, r.status === "fulfilled" ? "done" : "failed"));
+    setPipelineSummary(
+      jobs.map((j, i) => `${j.label}: ${results[i].status === "fulfilled" ? "성공" : "실패"}`).join(" · "),
+    );
+
+    // STEP E: 가이드 준수 자동 검사 — 결정론적 검사는 각 결과 패널에서 이미
+    // 실시간으로(추가 크레딧 없이) 계산되어 표시된다.
+    update("guideCheck", "done");
+
+    // STEP F: 결과 화면 표시
+    update("result", "done");
+
+    setPipelineRunning(false);
   }
 
   return (
     <div className="flex flex-col gap-6">
-      {/* ① 콘텐츠 정보 */}
+      {/* ① 업체 가이드 */}
       <section className="rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">
         <SectionHeader
           step={1}
-          title="콘텐츠 기본 정보"
-          description="AI가 실제 경험이 담긴 콘텐츠를 만들 수 있도록 아래 내용을 입력해주세요."
+          title="업체 가이드라인"
+          description="업체에서 받은 체험단 가이드를 그대로 복사해서 붙여넣으세요. CREVENA가 필수 키워드, 문구, 사진 조건 등을 자동으로 분석합니다."
         />
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <textarea
+          rows={6}
+          placeholder="가이드라인을 여기에 그대로 붙여넣어 주세요"
+          value={guideText}
+          onChange={(e) => setGuideText(e.target.value)}
+          onBlur={(e) => handleGuideBlur(e.target.value)}
+          className="mt-3 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+        />
+        {guideError && (
+          <p className="mt-2 whitespace-pre-wrap rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {guideError}
+          </p>
+        )}
+        {guideAnalysis && (
+          <div className="mt-3">
+            <GuideAnalysisCard analysis={guideAnalysis} onChange={setGuideAnalysis} />
+          </div>
+        )}
+      </section>
+
+      {/* ② 사진 준비 */}
+      <PhotoSection manager={photoManager} requiredPhotoCount={photoBlogInfo.requiredPhotoCount} />
+
+      {/* ③ 내 경험 추가하기 (선택) */}
+      <Accordion title="내 경험 추가하기" description="선택 입력 — 비워둬도 생성할 수 있습니다">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {REVIEW_NOTE_FIELDS.map((field) => (
             <label key={field.key} className="flex flex-col gap-1 text-sm">
               <span className="flex items-center gap-1.5 font-medium text-zinc-700">
                 {field.label}
-                {!field.required && <OptionalTag />}
+                <OptionalTag />
               </span>
               <textarea
                 rows={2}
@@ -148,15 +303,11 @@ export function StudioTabs({
             </label>
           ))}
         </div>
-        <p className="mt-3 text-[11px] text-zinc-400">
-          이 정보는 블로그/Instagram/Threads 생성 시 공통으로 사용됩니다. 플랫폼마다 다시 입력할 필요가
-          없습니다.
-        </p>
-      </section>
+      </Accordion>
 
-      {/* ③ AI 콘텐츠 생성 — 플랫폼 선택 및 일괄 생성 */}
+      {/* ④ 제작할 콘텐츠 선택 + ⑤ AI 콘텐츠 만들기 */}
       <section className="rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">
-        <SectionHeader step={3} title="AI 콘텐츠 생성" description="만들고 싶은 플랫폼을 선택하세요." />
+        <SectionHeader step={4} title="제작할 콘텐츠 선택" description="만들고 싶은 플랫폼을 선택하세요." />
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {(["BLOG", "INSTAGRAM_FEED", "THREADS"] as const).map((key) => (
             <label
@@ -172,105 +323,117 @@ export function StudioTabs({
                   onChange={(e) => setSelected((prev) => ({ ...prev, [key]: e.target.checked }))}
                   className="h-4 w-4"
                 />
-                <span className="font-medium text-zinc-800">
-                  {TABS.find((t) => t.key === key)!.label}
-                </span>
+                <span className="font-medium text-zinc-800">{TABS.find((t) => t.key === key)!.label}</span>
               </span>
               <PlatformStatusPill status={platformStatus[key]} />
             </label>
           ))}
         </div>
-
-        <div className="mt-4 flex flex-col gap-2 border-t border-zinc-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-            <PlatformStatusPill status="COMING_SOON" />
-            <span>Reels — 영상 제작 기능은 다음 단계에서 제공됩니다.</span>
-          </div>
-          <div className="flex flex-col items-stretch gap-1 sm:items-end">
-            <button
-              onClick={runBulkGenerate}
-              disabled={bulkRunning || selectedCount === 0}
-              className="min-h-[44px] rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:bg-zinc-800 disabled:opacity-40"
-            >
-              {bulkRunning ? "선택 항목 생성 중..." : "선택 항목 한 번에 생성"}
-            </button>
-            {selectedCount > 0 && (
-              <span className="text-[11px] text-zinc-400">예상 사용량 {estimatedCredits} 크레딧</span>
-            )}
-          </div>
+        <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
+          <PlatformStatusPill status="COMING_SOON" />
+          <span>Reels — 영상 제작 기능은 다음 단계에서 제공됩니다.</span>
         </div>
-        {bulkRunning && (
-          <p className="mt-3 rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
-            {[
-              selected.BLOG && photoCount > 0 && "블로그 작성 중...",
-              selected.INSTAGRAM_FEED && "Instagram 작성 중...",
-              selected.THREADS && "Threads 작성 중...",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-        )}
-        {!bulkRunning && bulkResult && (
-          <p className="mt-3 rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-600">{bulkResult}</p>
-        )}
+
+        <div className="mt-5 flex flex-col items-stretch gap-1 border-t border-zinc-100 pt-4">
+          <SectionHeader step={5} title="AI 콘텐츠 만들기" />
+          <button
+            onClick={runOneClickPipeline}
+            disabled={pipelineRunning || selectedCount === 0}
+            className="mt-2 min-h-[48px] rounded-lg bg-zinc-900 px-5 py-3 text-base font-semibold text-white transition-opacity hover:bg-zinc-800 disabled:opacity-40"
+          >
+            {pipelineRunning ? "콘텐츠 만드는 중..." : "AI 콘텐츠 만들기"}
+          </button>
+          {selectedCount > 0 && (
+            <span className="text-[11px] text-zinc-400">예상 사용량 {estimatedCredits} 크레딧</span>
+          )}
+        </div>
       </section>
 
-      {/* ④ 결과 편집 — 플랫폼별 탭 */}
-      <div className="flex flex-wrap gap-1 overflow-x-auto border-b border-zinc-200">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`shrink-0 rounded-t-lg px-4 py-2 text-sm font-medium ${
-              tab === t.key ? "border-b-2 border-zinc-900 text-zinc-900" : "text-zinc-500 hover:text-zinc-900"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* ⑥ 생성 진행 상태 */}
+      {progressSteps.length > 0 && (
+        <section className="rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">
+          <SectionHeader step={6} title="생성 진행 상태" />
+          <div className="mt-3">
+            <ProgressList
+              steps={progressSteps.map((s) =>
+                s.key === "photoAnalyze" && s.state === "active" && photoManager.analyzeProgress
+                  ? {
+                      ...s,
+                      detail: `${photoManager.analyzeProgress.done}/${photoManager.analyzeProgress.total}`,
+                    }
+                  : s,
+              )}
+            />
+          </div>
+          {pipelineSummary && <p className="mt-3 rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-600">{pipelineSummary}</p>}
+        </section>
+      )}
 
-      {/* All tab panels stay mounted (just hidden) so switching tabs never
-          loses in-progress edits, and the bulk-generate refs above stay valid
-          regardless of which tab is currently visible. */}
-      <div className={tab === "BLOG" ? "" : "hidden"}>
-        <PhotoBlogStudio
-          ref={blogRef}
-          collaborationId={collaborationId}
-          initialPhotos={initialPhotos}
-          reviewNotes={reviewNotes}
-          collaborationInfo={photoBlogInfo}
-          onPhotoCountChange={setPhotoCount}
-          onStatusChange={(s) => setStatus("BLOG", s)}
+      {/* ⑦ 결과 확인/편집 (+ ⑧ 최종 가이드 검사, ⑨ 저장/복사는 각 결과 패널 하단에 포함) */}
+      <section>
+        <SectionHeader
+          step={7}
+          title="결과 확인/편집"
+          description="플랫폼별 결과를 확인하고 필요한 부분만 고쳐보세요. 각 결과 하단에서 가이드 충족 여부(✓/△/✕)를 바로 확인할 수 있습니다."
         />
-      </div>
-      <div className={tab === "INSTAGRAM_FEED" ? "" : "hidden"}>
-        <PlatformPanel
-          ref={igRef}
-          platform="INSTAGRAM_FEED"
-          collaborationId={collaborationId}
-          collaborationInfo={collaborationInfo}
-          reviewNotes={reviewNotes}
-          initial={initialInstagram}
-          onStatusChange={(s) => setStatus("INSTAGRAM_FEED", s)}
-        />
-      </div>
-      <div className={tab === "THREADS" ? "" : "hidden"}>
-        <PlatformPanel
-          ref={threadsRef}
-          platform="THREADS"
-          collaborationId={collaborationId}
-          collaborationInfo={collaborationInfo}
-          reviewNotes={reviewNotes}
-          initial={initialThreads}
-          onStatusChange={(s) => setStatus("THREADS", s)}
-        />
-      </div>
-      <div className={tab === "REELS" ? "" : "hidden"}>
-        <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-8 text-center text-sm text-zinc-500">
-          Reels는 준비 중입니다 (Coming Soon). 영상 편집/업로드는 이번 단계 범위에 포함되지 않습니다.
+        <div className="mt-3 flex flex-wrap gap-1 overflow-x-auto border-b border-zinc-200">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`shrink-0 rounded-t-lg px-4 py-2 text-sm font-medium ${
+                tab === t.key ? "border-b-2 border-zinc-900 text-zinc-900" : "text-zinc-500 hover:text-zinc-900"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-      </div>
+
+        {/* All tab panels stay mounted (just hidden) so switching tabs never
+            loses in-progress edits, and the one-click refs above stay valid
+            regardless of which tab is currently visible. */}
+        <div className={`mt-4 ${tab === "BLOG" ? "" : "hidden"}`}>
+          <PhotoBlogStudio
+            ref={blogRef}
+            collaborationId={collaborationId}
+            photoManager={photoManager}
+            reviewNotes={reviewNotes}
+            guideAnalysis={guideAnalysis}
+            collaborationInfo={photoBlogInfo}
+            onStatusChange={(s) => setStatus("BLOG", s)}
+          />
+        </div>
+        <div className={`mt-4 ${tab === "INSTAGRAM_FEED" ? "" : "hidden"}`}>
+          <PlatformPanel
+            ref={igRef}
+            platform="INSTAGRAM_FEED"
+            collaborationId={collaborationId}
+            collaborationInfo={collaborationInfo}
+            reviewNotes={reviewNotes}
+            initial={initialInstagram}
+            guideAnalysis={guideAnalysis}
+            onStatusChange={(s) => setStatus("INSTAGRAM_FEED", s)}
+          />
+        </div>
+        <div className={`mt-4 ${tab === "THREADS" ? "" : "hidden"}`}>
+          <PlatformPanel
+            ref={threadsRef}
+            platform="THREADS"
+            collaborationId={collaborationId}
+            collaborationInfo={collaborationInfo}
+            reviewNotes={reviewNotes}
+            initial={initialThreads}
+            guideAnalysis={guideAnalysis}
+            onStatusChange={(s) => setStatus("THREADS", s)}
+          />
+        </div>
+        <div className={`mt-4 ${tab === "REELS" ? "" : "hidden"}`}>
+          <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-8 text-center text-sm text-zinc-500">
+            Reels는 준비 중입니다 (Coming Soon). 영상 편집/업로드는 이번 단계 범위에 포함되지 않습니다.
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

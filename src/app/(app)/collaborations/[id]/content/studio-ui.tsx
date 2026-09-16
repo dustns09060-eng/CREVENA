@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { DeterministicGuideCheck } from "@/lib/content-guide-check";
+import { useEffect, useState, type ReactNode } from "react";
+import type { DeterministicGuideCheck, GuideCheckItem } from "@/lib/content-guide-check";
+
+export type { GuideCheckItem };
 
 // STEP35: shared presentational pieces for the content studio's UX overhaul.
 // Pure UI — none of this touches credits, AI calls, storage, or DB writes;
@@ -98,12 +100,6 @@ export function PlatformStatusPill({ status }: { status: PlatformStatus }) {
   );
 }
 
-export type GuideCheckItem = {
-  label: string;
-  state: "pass" | "warn" | "fail";
-  detail?: string;
-};
-
 const GUIDE_ICON: Record<GuideCheckItem["state"], { icon: string; className: string }> = {
   pass: { icon: "✓", className: "text-emerald-600" },
   warn: { icon: "△", className: "text-amber-600" },
@@ -199,5 +195,84 @@ export function PhotoUploadEmptyState({
       <span className="text-xs text-zinc-500">제품과 실제 사용 사진을 추가해주세요.</span>
       {maxCount ? <span className="text-[11px] text-zinc-400">최대 {maxCount}장</span> : null}
     </button>
+  );
+}
+
+// STEP35.5: collapsed-by-default section for optional input ("내 경험
+//추가하기") — the first screen should not force every field open at once.
+export function Accordion({
+  title,
+  description,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  description?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left sm:px-5"
+      >
+        <span>
+          <span className="text-sm font-semibold text-zinc-900">{title}</span>
+          {description && <span className="ml-2 text-xs text-zinc-400">{description}</span>}
+        </span>
+        <span aria-hidden className={`text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`}>
+          ▾
+        </span>
+      </button>
+      {open && <div className="border-t border-zinc-100 p-4 sm:p-5">{children}</div>}
+    </div>
+  );
+}
+
+export type ProgressStepState = "pending" | "active" | "done" | "failed" | "skipped";
+
+export type ProgressStep = {
+  key: string;
+  label: string;
+  state: ProgressStepState;
+  detail?: string;
+};
+
+const PROGRESS_ICON: Record<ProgressStepState, string> = {
+  pending: "○",
+  active: "◐",
+  done: "✓",
+  failed: "✕",
+  skipped: "–",
+};
+
+const PROGRESS_CLASS: Record<ProgressStepState, string> = {
+  pending: "text-zinc-300",
+  active: "text-blue-600",
+  done: "text-emerald-600",
+  failed: "text-red-600",
+  skipped: "text-zinc-400",
+};
+
+// STEP35.5 item 16: live progress list for the one-click pipeline
+// (가이드 분석 중... → 사진 분석 중... 3/10 → ... → 완료).
+export function ProgressList({ steps }: { steps: ProgressStep[] }) {
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {steps.map((step) => (
+        <li key={step.key} className="flex items-center gap-2 text-xs">
+          <span aria-hidden className={`w-4 text-center font-semibold ${PROGRESS_CLASS[step.state]}`}>
+            {PROGRESS_ICON[step.state]}
+          </span>
+          <span className={step.state === "active" ? "font-medium text-zinc-900" : "text-zinc-600"}>
+            {step.label}
+            {step.detail ? ` ${step.detail}` : ""}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }

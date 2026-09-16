@@ -65,28 +65,39 @@ export type PhotoSummary = {
 
 export const photoOrderSchema: ResponseSchema = {
   name: "submit_photo_order",
-  description: "추천하는 사진 배치 순서를 photoId 배열로 제출한다.",
+  description: "추천하는 사진 배치 순서, 대표사진, 제외 추천 사진을 제출한다.",
   schema: {
     type: "object",
     properties: {
-      order: { type: "array", items: { type: "string" }, description: "photoId를 추천 순서대로 나열" },
+      order: { type: "array", items: { type: "string" }, description: "photoId를 추천 순서대로 나열 (전체 사진 포함)" },
+      primaryPhotoId: {
+        type: "string",
+        description: "대표사진으로 추천하는 photoId. order 배열에 포함된 값 중 하나.",
+      },
+      excludePhotoIds: {
+        type: "array",
+        items: { type: "string" },
+        description: "중복되거나 의미가 거의 같아 블로그 본문에는 쓰지 않는 게 나은 photoId 목록 (없으면 빈 배열)",
+      },
     },
-    required: ["order"],
+    required: ["order", "primaryPhotoId", "excludePhotoIds"],
   },
 };
 
 export function buildPhotoOrderPrompt(photos: PhotoSummary[]) {
   const systemPrompt = [
     "너는 블로그 글의 사진 배치 순서를 추천하는 어시스턴트다.",
-    "일반적인 협찬 후기 블로그 흐름(제품 소개 → 패키지/구성품 → 디테일 → 사용 모습 → 완성/결과)을 참고해 사진 순서를 정하라.",
-    "추천 순서는 submit_photo_order 도구를 호출해서 제출하라.",
+    "일반적인 협찬 후기 블로그 흐름(대표/완성 사진 → 제품 전체 → 패키지 → 구성 → 특징 → 실제 사용 준비 → 실제 사용 → 아이/가족 반응 → 디테일 → 마무리)을 참고하되, 실제 제공된 사진 종류에 맞게 유동적으로 순서를 정하라.",
+    "모든 사진을 반드시 사용할 필요는 없다. 서로 내용이 거의 같거나 의미가 약한 사진이 있으면 excludePhotoIds에 넣어라 (그래도 order 배열에는 전체 사진을 포함하라).",
+    "가장 완성도 있거나 대표성이 있는 사진 하나를 primaryPhotoId로 추천하라.",
+    "추천 결과는 submit_photo_order 도구를 호출해서 제출하라.",
   ].join("\n");
 
   const list = photos
     .map((p) => `- id: ${p.id}, 유형: ${p.photoType ?? "미분류"}, 설명: ${p.description}`)
     .join("\n");
 
-  const prompt = `아래 사진 목록을 블로그 글 흐름에 맞는 순서로 정렬해줘.\n\n${list}`;
+  const prompt = `아래 사진 목록을 블로그 글 흐름에 맞는 순서로 정렬하고, 대표사진과 제외 추천 사진을 알려줘.\n\n${list}`;
 
   return { systemPrompt, prompt, responseSchema: photoOrderSchema };
 }
