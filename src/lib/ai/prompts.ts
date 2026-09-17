@@ -260,3 +260,50 @@ export function buildFieldRegeneratePrompt(
   ].join("\n");
   return { systemPrompt, prompt, responseSchema: fieldRegenerateSchema };
 }
+
+// ---------------------------------------------------------------------------
+// STEP37 item 2: "AI로 보완" — patch in only the missing STRUCTURAL guide
+// items (keywords/phrase/hashtags/account tags/min length) into an already
+// generated post, changing as little else as possible. Reuses the exact
+// per-platform response schema so the result plugs into the same setParts
+// path as a full generate. The missing-item list passed in must already be
+// filtered to autoFixable items by the caller — this function additionally
+// repeats the no-fabrication rule so the model can't "solve" a length
+// shortfall by inventing experience.
+// ---------------------------------------------------------------------------
+export function buildContentAutoFillPrompt(
+  platform: ContentPlatformKey,
+  current: InstagramParts | ThreadsParts,
+  missingItems: { label: string; detail?: string }[],
+  input: ContentGenerationInput,
+): { systemPrompt: string; prompt: string; responseSchema: ResponseSchema } {
+  const styleSamplesText = formatStyleSamples(input.styleSamples);
+  const contextLines = buildContextBlock(input, styleSamplesText);
+
+  const systemPrompt = [
+    COMMON_RULES,
+    "너는 이미 작성된 게시글에서 누락된 구조적 요구사항만 자연스럽게 보완하는 어시스턴트다.",
+    "아래 '보완이 필요한 항목' 목록에 있는 것만 고쳐라 — 그 외 내용, 어조, 문장은 최대한 원문 그대로 유지하라.",
+    "글자 수가 부족하면 사진관찰사실/사용자입력경험/업체가이드객관정보 중 아직 안 쓴 내용을 추가해서 늘려라. 없는 경험이나 반응, 효과, 시간 경과, 재구매 의사를 새로 지어내서 글자 수를 채우지 마라.",
+    PLATFORM_STRUCTURE_INSTRUCTIONS[platform],
+  ].join("\n");
+
+  const currentText =
+    platform === "INSTAGRAM_FEED"
+      ? `hook: ${(current as InstagramParts).hook}\nbody: ${(current as InstagramParts).body}\ncta: ${(current as InstagramParts).cta}\nhashtags: ${(current as InstagramParts).hashtags}`
+      : (current as ThreadsParts).posts.map((p, i) => `${i + 1}. ${p}`).join("\n");
+
+  const promptParts = [
+    ...contextLines,
+    "",
+    "## 현재 게시글",
+    currentText,
+    "",
+    "## 보완이 필요한 항목",
+    missingItems.map((m) => `- ${m.label}${m.detail ? ` (${m.detail})` : ""}`).join("\n"),
+    "",
+    "위 누락 항목만 자연스럽게 보완해서 게시글 전체를 다시 제출해줘.",
+  ];
+
+  return { systemPrompt, prompt: promptParts.join("\n"), responseSchema: CONTENT_RESPONSE_SCHEMAS[platform] };
+}

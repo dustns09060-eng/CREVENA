@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   buildContentPrompt,
   buildFieldRegeneratePrompt,
+  buildContentAutoFillPrompt,
   assembleInstagramText,
   assembleThreadsText,
   type ContentGenerationInput,
@@ -88,6 +89,7 @@ export const PlatformPanel = forwardRef<
   const [error, setError] = useState<string | null>(null);
   const [aiCheckNotes, setAiCheckNotes] = useState<string | null>(null);
   const [checkingAi, setCheckingAi] = useState(false);
+  const [autoFixing, setAutoFixing] = useState(false);
   const { toastMessage, showToast } = useSaveToast();
 
   const hasContent = platform === "INSTAGRAM_FEED"
@@ -223,6 +225,41 @@ export const PlatformPanel = forwardRef<
     }
   }
 
+  // STEP37 item 2: "AI로 보완" — patches in only the autoFixable ✕ items
+  // without touching anything experience-based. Reuses the platform's own
+  // response schema so the result plugs straight into setParts.
+  async function handleAutoFix() {
+    const fixable = guideItems.filter((i) => i.state === "fail" && i.autoFixable);
+    if (fixable.length === 0) return;
+    setAutoFixing(true);
+    setError(null);
+    try {
+      const { systemPrompt, prompt, responseSchema } = buildContentAutoFillPrompt(
+        platform,
+        parts,
+        fixable.map((i) => ({ label: i.label, detail: i.detail })),
+        { ...collaborationInfo, reviewNotes },
+      );
+      const res = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, systemPrompt, responseSchema, operation: "GUIDE_AUTOFIX" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "누락 항목 보완에 실패했습니다.");
+      const newParts =
+        platform === "INSTAGRAM_FEED"
+          ? parseJsonResponse<InstagramParts>(data.content)
+          : parseJsonResponse<ThreadsParts>(data.content);
+      setParts(newParts);
+      setDirty(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "누락 항목 보완에 실패했습니다.");
+    } finally {
+      setAutoFixing(false);
+    }
+  }
+
   async function save() {
     setSaving(true);
     setError(null);
@@ -304,7 +341,7 @@ export const PlatformPanel = forwardRef<
   // Prevents double-clicks across the panel's different async actions (full
   // generate, per-field regenerate, save, AI guide check) from overlapping.
   const anyRegenerating = regeneratingField !== null;
-  const busy = loading || anyRegenerating || saving || checkingAi;
+  const busy = loading || anyRegenerating || saving || checkingAi || autoFixing;
 
   return (
     <div className="flex flex-col gap-4">
@@ -459,7 +496,7 @@ export const PlatformPanel = forwardRef<
               <p className="text-xs font-semibold text-zinc-500">가이드 검사 결과</p>
               {guideItems.length > 0 && (
                 <div>
-                  <GuideCheckList items={guideItems} />
+                  <GuideCheckList items={guideItems} onAutoFix={handleAutoFix} autoFixing={autoFixing} />
                   <p className="mt-1.5 text-[11px] text-zinc-400">{deterministicCheck?.charCount}자</p>
                 </div>
               )}

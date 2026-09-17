@@ -239,6 +239,59 @@ export function buildPhotoBlogPrompt(input: PhotoBlogInput) {
   return { systemPrompt, prompt: promptParts.join("\n"), responseSchema: photoBlogSchema };
 }
 
+// ---------------------------------------------------------------------------
+// STEP37 item 2: "AI로 보완" for the blog — same idea as
+// buildContentAutoFillPrompt in prompts.ts, but for the photo-blog's
+// title/intro/sections/closing/hashtags shape. Reuses photoBlogSchema so the
+// result plugs into the exact same setBlogMeta + applyGeneratedSections path
+// as a full write. The caller must pass only autoFixable missing items.
+// ---------------------------------------------------------------------------
+export function buildBlogAutoFillPrompt(
+  input: PhotoBlogInput,
+  current: { title: string; intro: string; sections: { photoId: string; body: string }[]; closing: string; hashtags: string },
+  missingItems: { label: string; detail?: string }[],
+) {
+  const systemPrompt = [
+    "너는 인플루언서의 협찬 블로그 글을 사진 순서에 맞춰 작성하는 어시스턴트다.",
+    NO_FABRICATION_RULE,
+    "너는 이미 작성된 블로그 글에서 누락된 구조적 요구사항만 자연스럽게 보완하는 어시스턴트다.",
+    "아래 '보완이 필요한 항목' 목록에 있는 것만 고쳐라 — 그 외 내용, 문단 순서, 어조, 사진별 문단 배치는 최대한 원문 그대로 유지하라.",
+    "글자 수가 부족하면 사진관찰사실/사용자입력경험/업체가이드객관정보 중 아직 안 쓴 내용을 추가해서 늘려라. 없는 경험이나 반응, 효과, 시간 경과, 재구매 의사를 새로 지어내서 글자 수를 채우지 마라.",
+    "완성된 글 전체(title/intro/sections/closing/hashtags)를 submit_photo_blog 도구로 제출하라. sections의 photoId는 현재 글과 동일하게 유지하라.",
+  ].join("\n");
+
+  const collabLines = [`브랜드: ${input.brandName}`, `제품명: ${input.productName}`];
+  if (input.requiredKeywords) collabLines.push(`필수 키워드: ${input.requiredKeywords}`);
+  if (input.requiredHashtags) collabLines.push(`필수 해시태그: ${input.requiredHashtags}`);
+  if (input.guideRawContent) collabLines.push(`브랜드 가이드라인 원문:\n${input.guideRawContent}`);
+
+  const reviewLines = (Object.keys(REVIEW_NOTE_LABELS) as (keyof ReviewNotes)[])
+    .filter((key) => input.reviewNotes[key]?.trim())
+    .map((key) => `${REVIEW_NOTE_LABELS[key]}: ${input.reviewNotes[key]}`);
+
+  const promptParts = [
+    "## 협찬 정보",
+    collabLines.join("\n"),
+    "",
+    "## 사용자가 입력한 후기 메모",
+    reviewLines.length > 0 ? reviewLines.join("\n") : "(없음)",
+    "",
+    "## 현재 블로그 글",
+    `제목: ${current.title}`,
+    `도입: ${current.intro}`,
+    ...current.sections.map((s, i) => `문단${i + 1} (photoId: ${s.photoId}): ${s.body}`),
+    `마무리: ${current.closing}`,
+    `해시태그: ${current.hashtags}`,
+    "",
+    "## 보완이 필요한 항목",
+    missingItems.map((m) => `- ${m.label}${m.detail ? ` (${m.detail})` : ""}`).join("\n"),
+    "",
+    "위 누락 항목만 자연스럽게 보완해서 블로그 글 전체를 다시 제출해줘.",
+  ];
+
+  return { systemPrompt, prompt: promptParts.join("\n"), responseSchema: photoBlogSchema };
+}
+
 export type GuideCheckInput = {
   fullText: string;
   requiredKeywords?: string | null;

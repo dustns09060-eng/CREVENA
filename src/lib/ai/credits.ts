@@ -16,7 +16,12 @@ export type AiOperation =
   // counts, required phrases, etc.) from pasted brand guideline text. A new
   // capability, not a repricing of anything above — every existing cost is
   // unchanged.
-  | "GUIDE_ANALYZE";
+  | "GUIDE_ANALYZE"
+  // STEP37 item 2: patches in missing structural guide items (keywords,
+  // required phrase, hashtags, account tags, min length) without touching
+  // anything experience-based. Same cost class as PARAGRAPH_REGENERATE — a
+  // targeted text patch, not a full rewrite.
+  | "GUIDE_AUTOFIX";
 
 export const OPERATION_CREDIT_COST: Record<AiOperation, number> = {
   CONTENT_GENERATE: 1,
@@ -26,6 +31,7 @@ export const OPERATION_CREDIT_COST: Record<AiOperation, number> = {
   BLOG_WRITE: 10,
   PARAGRAPH_REGENERATE: 1,
   GUIDE_ANALYZE: 2,
+  GUIDE_AUTOFIX: 1,
 };
 
 export function creditLabel(operation: AiOperation): string {

@@ -73,6 +73,12 @@ export type GuideCheckItem = {
   label: string;
   state: "pass" | "warn" | "fail";
   detail?: string;
+  // STEP37 item 2: true only for "fail" items that are purely structural
+  // (a missing keyword/phrase/hashtag/tag, or a short body) — safe for AI to
+  // patch in without inventing any fact. Never set for anything requiring a
+  // real experience, a real photo/video, or removing a prohibited phrase
+  // (those need a human, not a text patch).
+  autoFixable?: boolean;
 };
 
 // Deterministic (no AI call) comparison of generated content against the
@@ -109,12 +115,18 @@ export function checkAgainstGuideAnalysis(
   const missingFrom = (haystack: string, terms: string[]) =>
     terms.filter((t) => t.trim() && !haystack.includes(t.trim().toLowerCase()));
 
-  if (analysis.titleKeywords.length > 0) {
+  // content.title is only present for platforms that actually have a title
+  // (currently the blog). Instagram/Threads pass no title at all, and must
+  // not be judged against a title-keyword rule they have no field to satisfy
+  // — otherwise this item can never turn green no matter what "AI로 보완"
+  // writes into the body.
+  if (analysis.titleKeywords.length > 0 && content.title !== undefined) {
     const missing = missingFrom(titleLower, analysis.titleKeywords);
     items.push({
       label: "제목 필수 키워드",
       state: missing.length === 0 ? "pass" : "fail",
       detail: missing.length > 0 ? `누락: ${missing.join(", ")}` : undefined,
+      autoFixable: missing.length > 0,
     });
   }
   if (analysis.bodyKeywords.length > 0) {
@@ -123,6 +135,7 @@ export function checkAgainstGuideAnalysis(
       label: "본문 필수 키워드",
       state: missing.length === 0 ? "pass" : "fail",
       detail: missing.length > 0 ? `누락: ${missing.join(", ")}` : undefined,
+      autoFixable: missing.length > 0,
     });
   }
   if (analysis.requiredPhrases.length > 0) {
@@ -131,6 +144,7 @@ export function checkAgainstGuideAnalysis(
       label: "필수 문구",
       state: missing.length === 0 ? "pass" : "fail",
       detail: missing.length > 0 ? `누락: ${missing.join(", ")}` : undefined,
+      autoFixable: missing.length > 0,
     });
   }
   if (analysis.hashtags.length > 0) {
@@ -142,6 +156,7 @@ export function checkAgainstGuideAnalysis(
       label: "필수 해시태그",
       state: missing.length === 0 ? "pass" : "fail",
       detail: missing.length > 0 ? `누락: ${missing.join(", ")}` : undefined,
+      autoFixable: missing.length > 0,
     });
   }
   if (analysis.accountTags.length > 0) {
@@ -153,6 +168,7 @@ export function checkAgainstGuideAnalysis(
       label: "필수 계정 태그",
       state: missing.length === 0 ? "pass" : "fail",
       detail: missing.length > 0 ? `누락: ${missing.join(", ")}` : undefined,
+      autoFixable: missing.length > 0,
     });
   }
   if (analysis.requiredUrls.length > 0) {
@@ -179,6 +195,7 @@ export function checkAgainstGuideAnalysis(
       label: "최소 글자 수",
       state: count >= analysis.minimumCharacters ? "pass" : "fail",
       detail: `${count}/${analysis.minimumCharacters}자`,
+      autoFixable: count < analysis.minimumCharacters,
     });
   }
   if (analysis.minimumPhotos && context.photoCount !== undefined) {
