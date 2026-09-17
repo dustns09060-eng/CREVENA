@@ -124,6 +124,7 @@ export function buildDeterministicGuideItems(
       label: "필수 키워드",
       state: check.missingKeywords.length === 0 ? "pass" : "fail",
       detail: check.missingKeywords.length > 0 ? `누락: ${check.missingKeywords.join(", ")}` : undefined,
+      autoFixable: check.missingKeywords.length > 0,
     });
   }
   if (guide.requiredHashtags?.trim()) {
@@ -131,6 +132,7 @@ export function buildDeterministicGuideItems(
       label: "필수 해시태그",
       state: check.missingHashtags.length === 0 ? "pass" : "fail",
       detail: check.missingHashtags.length > 0 ? `누락: ${check.missingHashtags.join(", ")}` : undefined,
+      autoFixable: check.missingHashtags.length > 0,
     });
   }
   if (guide.requiredMentions?.trim()) {
@@ -138,36 +140,82 @@ export function buildDeterministicGuideItems(
       label: "필수 계정 태그",
       state: check.missingMentions.length === 0 ? "pass" : "fail",
       detail: check.missingMentions.length > 0 ? `누락: ${check.missingMentions.join(", ")}` : undefined,
+      autoFixable: check.missingMentions.length > 0,
     });
   }
   if (guide.adDisclosureText?.trim()) {
     items.push({
       label: "광고 표시 문구",
       state: check.hasAdDisclosure ? "pass" : "fail",
+      autoFixable: !check.hasAdDisclosure,
     });
   }
   return items;
 }
 
-export function GuideCheckList({ items }: { items: GuideCheckItem[] }) {
+// STEP37 item 8: warn items are always "사용자 확인 필요" — a real experience,
+// video, or photo-count fact CREVENA can't verify on its own — while fail
+// items read as "누락". This is display-only; the underlying state names
+// (pass/warn/fail) are unchanged everywhere else in the codebase.
+const GUIDE_STATE_SUFFIX: Record<GuideCheckItem["state"], string | null> = {
+  pass: null,
+  warn: "사용자 확인 필요",
+  fail: "누락",
+};
+
+export function GuideCheckList({
+  items,
+  onAutoFix,
+  autoFixing,
+}: {
+  items: GuideCheckItem[];
+  // STEP37 item 2: when provided, a single bulk "AI로 보완" button appears
+  // whenever at least one item is both state:"fail" and autoFixable — it
+  // patches in every such item at once. Items that need a human (사진 수
+  // 조건, 영상/GIF, 금지 표현, 필수 언급 포인트) never get this button.
+  onAutoFix?: () => void;
+  autoFixing?: boolean;
+}) {
   if (items.length === 0) return null;
+  const fixableCount = items.filter((i) => i.state === "fail" && i.autoFixable).length;
+  const allSatisfied = items.every((i) => i.state !== "fail");
+
   return (
-    <ul className="flex flex-col gap-1">
-      {items.map((item) => {
-        const { icon, className } = GUIDE_ICON[item.state];
-        return (
-          <li key={item.label} className="flex items-start gap-1.5 text-xs">
-            <span aria-hidden className={`font-semibold ${className}`}>
-              {icon}
-            </span>
-            <span className="text-zinc-700">
-              {item.label}
-              {item.detail && <span className="text-zinc-500"> · {item.detail}</span>}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+    <div className="flex flex-col gap-2">
+      {allSatisfied && (
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+          <span aria-hidden>✓</span> 가이드 필수 항목 확인 완료
+        </p>
+      )}
+      <ul className="flex flex-col gap-1">
+        {items.map((item) => {
+          const { icon, className } = GUIDE_ICON[item.state];
+          const suffix = GUIDE_STATE_SUFFIX[item.state];
+          return (
+            <li key={item.label} className="flex items-start gap-1.5 text-xs">
+              <span aria-hidden className={`font-semibold ${className}`}>
+                {icon}
+              </span>
+              <span className="text-zinc-700">
+                {item.label}
+                {suffix && <span className={`ml-1 ${className}`}>({suffix})</span>}
+                {item.detail && <span className="text-zinc-500"> · {item.detail}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {onAutoFix && fixableCount > 0 && (
+        <button
+          type="button"
+          onClick={onAutoFix}
+          disabled={autoFixing}
+          className="mt-1 self-start rounded-full border border-zinc-300 px-3 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+        >
+          {autoFixing ? "보완 중..." : `누락 항목 AI로 보완 (${fixableCount}건)`}
+        </button>
+      )}
+    </div>
   );
 }
 

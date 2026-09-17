@@ -21,7 +21,12 @@ function isResponseSchema(value: unknown): value is ResponseSchema {
 // the cost is fixed here rather than trusted from the client. Anything
 // pricier (ORDER_SUGGEST, BLOG_WRITE) has its own dedicated route below so a
 // client can't relabel an expensive call as one of these to pay less.
-const ALLOWED_OPERATIONS: AiOperation[] = ["CONTENT_GENERATE", "GUIDE_CHECK", "PARAGRAPH_REGENERATE"];
+const ALLOWED_OPERATIONS: AiOperation[] = [
+  "CONTENT_GENERATE",
+  "GUIDE_CHECK",
+  "PARAGRAPH_REGENERATE",
+  "GUIDE_AUTOFIX",
+];
 const CREDITS_NEEDED = OPERATION_CREDIT_COST.CONTENT_GENERATE;
 
 export async function POST(request: Request) {

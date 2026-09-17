@@ -7,6 +7,7 @@ import {
   buildPhotoBlogPrompt,
   buildGuideCheckPrompt,
   buildSinglePhotoSectionPrompt,
+  buildBlogAutoFillPrompt,
   parseJsonResponse,
   type PhotoSummary,
   type RegenerateMode,
@@ -103,6 +104,7 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [autoFixing, setAutoFixing] = useState(false);
 
   const [blogMeta, setBlogMeta] = useState<BlogMeta | null>(initial?.generationInput ?? null);
   // STEP36 item 6: reviewNotes snapshot at the last successful blog write.
@@ -131,7 +133,7 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writing, blogMeta]);
 
-  const busy = writing || checking || saving || regeneratingId !== null;
+  const busy = writing || checking || saving || regeneratingId !== null || autoFixing;
 
   const assembleFullText = () => {
     if (!blogMeta) return "";
@@ -223,6 +225,63 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
   }
 
   useImperativeHandle(ref, () => ({ generate: handleWriteBlog, isDirty: () => libraryDirty }));
+
+  // STEP37 item 2: "AI로 보완" — patches in only the autoFixable ✕ items
+  // (missing title/body keyword, required phrase, hashtag, account tag, or
+  // a short body) without touching anything experience-based. Reuses the
+  // same photoBlogSchema output as a full write, so the result applies via
+  // the exact same setBlogMeta/applyGeneratedSections path.
+  async function handleAutoFix() {
+    if (!blogMeta) return;
+    const fixable = guideItems.filter((i) => i.state === "fail" && i.autoFixable);
+    if (fixable.length === 0) return;
+    setAutoFixing(true);
+    setError(null);
+    try {
+      const currentSections = photos
+        .filter((p) => p.body_section)
+        .map((p) => ({ photoId: p.id, body: p.body_section as string }));
+      const { systemPrompt, prompt, responseSchema } = buildBlogAutoFillPrompt(
+        {
+          brandName: collaborationInfo.brandName,
+          productName: collaborationInfo.productName,
+          campaignName: collaborationInfo.campaignName,
+          requiredKeywords: collaborationInfo.requiredKeywords,
+          requiredHashtags: collaborationInfo.requiredHashtags,
+          adDisclosureText: collaborationInfo.adDisclosureText,
+          contentGuide: null,
+          guideRawContent: collaborationInfo.guideRawContent,
+          reviewNotes,
+          photos: [],
+        },
+        { title: blogMeta.title, intro: blogMeta.intro, sections: currentSections, closing: blogMeta.closing, hashtags: blogMeta.hashtags },
+        fixable.map((i) => ({ label: i.label, detail: i.detail })),
+      );
+      const raw = await callGenerate({
+        systemPrompt,
+        prompt,
+        collaborationId,
+        maxTokens: Math.min(2000 + currentSections.length * 350, 8192),
+        responseSchema,
+        operation: "GUIDE_AUTOFIX",
+      });
+      const parsed = parseJsonResponse<{
+        title: string;
+        intro: string;
+        sections: { photoId: string; body: string }[];
+        closing: string;
+        hashtags: string;
+      }>(raw);
+      setBlogMeta({ title: parsed.title, intro: parsed.intro, closing: parsed.closing, hashtags: parsed.hashtags });
+      setLibraryDirty(true);
+      await applyGeneratedSections(parsed.sections);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "누락 항목 보완에 실패했습니다.");
+    } finally {
+      setAutoFixing(false);
+    }
+  }
 
   async function handleGuideCheck() {
     setChecking(true);
@@ -515,7 +574,9 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
           {(guideItems.length > 0 || guideCheck) && (
             <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4">
               <p className="text-xs font-semibold text-zinc-500">가이드 검사 결과</p>
-              {guideItems.length > 0 && <GuideCheckList items={guideItems} />}
+              {guideItems.length > 0 && (
+                <GuideCheckList items={guideItems} onAutoFix={handleAutoFix} autoFixing={autoFixing} />
+              )}
               {guideCheck && (
                 <div className="border-t border-zinc-100 pt-3">
                   <p className="flex items-center gap-1.5 text-xs font-medium text-amber-600">
