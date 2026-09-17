@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useVideoManager, MAX_VIDEO_COUNT, ACCEPTED_VIDEO_TYPES, type VideoWithUrl } from "./useVideoManager";
 import { saveReelsProject, type ReelsProject, type ReelsScene, type ReelsCaptionStyle } from "./actions";
 import { buildReelsPlanPrompt, parseJsonResponse, type ReelsMediaSummary } from "@/lib/ai/reels-prompts";
+import { renderReelsToMp4, type RenderProgress } from "./render";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
 import type { ReviewNotes, StyleSample } from "@/lib/ai/prompts";
 import type { CollaborationPhoto } from "@/types/database";
@@ -105,6 +106,27 @@ export function ReelsStudio({
   const [error, setError] = useState<string | null>(null);
   const [libraryDirty, setLibraryDirty] = useState(false);
   const [playIndex, setPlayIndex] = useState<number | null>(null);
+
+  // STEP40: rendering is entirely client-side (no server cost, see the
+  // STEP40 report) so none of this touches the DB — a render never survives
+  // a reload, and that's intentional: there's no MP4 anywhere to restore.
+  const [renderState, setRenderState] = useState<"idle" | "rendering" | "done" | "error">("idle");
+  const [renderProgress, setRenderProgress] = useState<RenderProgress | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [renderedUrl, setRenderedUrl] = useState<string | null>(null);
+  const [renderedSize, setRenderedSize] = useState<number | null>(null);
+  // Snapshot of the scenes actually used for the last completed render, so
+  // any later edit can be flagged stale without a native confirm() dialog.
+  const [renderedForScenes, setRenderedForScenes] = useState<string | null>(null);
+  const renderingRef = useRef(false);
+  const renderStale = renderState === "done" && renderedForScenes !== null && renderedForScenes !== JSON.stringify(project?.scenes ?? []);
+
+  useEffect(() => {
+    return () => {
+      if (renderedUrl) URL.revokeObjectURL(renderedUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const photoById = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos]);
   const videoById = useMemo(() => new Map(videos.map((v) => [v.id, v])), [videos]);
@@ -239,6 +261,45 @@ export function ReelsStudio({
       setError(err instanceof Error ? err.message : "저장에 실패했습니다.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // STEP40 item 14: a synchronous ref guard (same pattern as
+  // PhotoBlogStudio's writingRef) so a rapid double-click can't start two
+  // overlapping renders before the disabled-button re-render lands.
+  async function handleRender() {
+    if (renderingRef.current || !project) return;
+    const included = project.scenes.filter((s) => s.included);
+    if (included.length === 0) {
+      setRenderError("포함된 장면이 없습니다.");
+      return;
+    }
+    renderingRef.current = true;
+    setRenderState("rendering");
+    setRenderError(null);
+    if (renderedUrl) {
+      URL.revokeObjectURL(renderedUrl);
+      setRenderedUrl(null);
+    }
+    const scenesSnapshot = JSON.stringify(project.scenes);
+    try {
+      const blob = await renderReelsToMp4({
+        scenes: included,
+        photoById,
+        videoById,
+        captionStyle,
+        onProgress: setRenderProgress,
+      });
+      setRenderedUrl(URL.createObjectURL(blob));
+      setRenderedSize(blob.size);
+      setRenderedForScenes(scenesSnapshot);
+      setRenderState("done");
+    } catch (err) {
+      setRenderError(err instanceof Error ? err.message : "렌더링에 실패했습니다.");
+      setRenderState("error");
+    } finally {
+      renderingRef.current = false;
+      setRenderProgress(null);
     }
   }
 
@@ -617,9 +678,49 @@ export function ReelsStudio({
             >
               {saving ? "저장 중..." : "저장"}
             </button>
-            <p className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-3 py-2 text-center text-[11px] text-zinc-500">
-              영상 렌더링(MP4 다운로드)은 다음 단계에서 지원 예정입니다.
-            </p>
+
+            <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+              <p className="text-xs font-semibold text-zinc-500">MP4 만들기 (베타)</p>
+              <p className="text-[11px] text-zinc-400">
+                이 브라우저에서 직접 영상을 만듭니다 (서버 업로드 없음). 오디오는 아직 지원하지 않아 무음으로
+                만들어집니다.
+              </p>
+              {renderStale && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+                  △ 영상이 변경되었습니다. MP4를 다시 만들어주세요.
+                </p>
+              )}
+              {renderError && (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
+                  {renderError}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={handleRender}
+                disabled={renderState === "rendering" || includedScenes.length === 0}
+                className="self-start rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+              >
+                {renderState === "rendering"
+                  ? `렌더링 중... (${renderProgress ? renderProgress.sceneIndex + 1 : 0}/${includedScenes.length}${
+                      renderProgress?.stage === "finalizing" ? " · 마무리 중" : ""
+                    })`
+                  : renderState === "done" && !renderStale
+                    ? "MP4 다시 만들기"
+                    : renderError
+                      ? "다시 시도"
+                      : "MP4 만들기"}
+              </button>
+              {renderState === "done" && renderedUrl && !renderStale && (
+                <a
+                  href={renderedUrl}
+                  download={`reels-${collaborationId}.mp4`}
+                  className="self-start rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
+                >
+                  ✓ 완료 — MP4 다운로드 {renderedSize ? `(${(renderedSize / 1024 / 1024).toFixed(1)}MB)` : ""}
+                </a>
+              )}
+            </div>
           </div>
         </div>
       )}
