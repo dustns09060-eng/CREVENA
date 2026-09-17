@@ -6,6 +6,7 @@ import type { ContentPlatformKey, ReviewNotes } from "@/lib/ai/prompts";
 import type { PlatformParts } from "./PlatformPanel";
 import type { BlogMeta } from "../photos/actions";
 import type { ReelsProject } from "../reels/actions";
+import type { CarouselProject } from "../carousel/actions";
 import type { ContentStatus } from "@/types/database";
 
 const BUCKET = "collaboration-photos";
@@ -13,6 +14,7 @@ const VIDEO_BUCKET = "collaboration-videos";
 const STUDIO_PLATFORMS: ContentPlatformKey[] = ["INSTAGRAM_FEED", "THREADS"];
 const BLOG_PLATFORM = "NAVER_BLOG";
 const REELS_PLATFORM = "REELS";
+const CAROUSEL_PLATFORM = "CAROUSEL";
 
 export default async function CollaborationContentPage({
   params,
@@ -50,7 +52,7 @@ export default async function CollaborationContentPage({
     .from("contents")
     .select("id, platform, body, status, generation_input")
     .eq("collaboration_id", id)
-    .in("platform", [...STUDIO_PLATFORMS, BLOG_PLATFORM, REELS_PLATFORM])
+    .in("platform", [...STUDIO_PLATFORMS, BLOG_PLATFORM, REELS_PLATFORM, CAROUSEL_PLATFORM])
     .order("created_at", { ascending: false });
 
   const initialContents: Partial<
@@ -80,6 +82,11 @@ export default async function CollaborationContentPage({
   const latestReels = existingContents?.find((c) => c.platform === REELS_PLATFORM);
   const initialReels = latestReels
     ? { id: latestReels.id, generationInput: (latestReels.generation_input as ReelsProject | null) ?? null }
+    : undefined;
+
+  const latestCarousel = existingContents?.find((c) => c.platform === CAROUSEL_PLATFORM);
+  const initialCarousel = latestCarousel
+    ? { id: latestCarousel.id, generationInput: (latestCarousel.generation_input as CarouselProject | null) ?? null }
     : undefined;
 
   const { data: photos } = await supabase
@@ -145,6 +152,7 @@ export default async function CollaborationContentPage({
           initialBlog={initialBlog}
           initialVideos={videosWithUrls}
           initialReels={initialReels}
+          initialCarousel={initialCarousel}
           collaborationInfo={{
             brandName: collaboration.brand_name,
             productName: collaboration.product_name,
@@ -163,6 +171,7 @@ export default async function CollaborationContentPage({
             campaignName: collaboration.campaign_name,
             requiredKeywords: collaboration.required_keywords,
             requiredHashtags: collaboration.required_hashtags,
+            requiredMentions: collaboration.required_mentions,
             adDisclosureText: collaboration.ad_disclosure_text,
             contentGuide: collaboration.content_guide,
             guideRawContent: guide?.raw_content ?? null,

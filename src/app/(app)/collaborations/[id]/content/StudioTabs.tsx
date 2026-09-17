@@ -9,6 +9,8 @@ import { GuideAnalysisCard } from "./GuideAnalysisCard";
 import { ReelsStudio } from "../reels/ReelsStudio";
 import type { VideoWithUrl } from "../reels/useVideoManager";
 import type { ReelsProject } from "../reels/actions";
+import { CarouselStudio } from "../carousel/CarouselStudio";
+import type { CarouselProject } from "../carousel/actions";
 import {
   SectionHeader,
   Accordion,
@@ -42,13 +44,14 @@ const REVIEW_NOTE_FIELDS: { key: keyof ReviewNotes; label: string }[] = [
 ];
 
 type StudioPlatform = "BLOG" | "INSTAGRAM_FEED" | "THREADS";
-type TabKey = StudioPlatform | "REELS";
+type TabKey = StudioPlatform | "REELS" | "CAROUSEL";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "BLOG", label: "블로그" },
   { key: "INSTAGRAM_FEED", label: "Instagram" },
   { key: "THREADS", label: "Threads" },
   { key: "REELS", label: "Reels" },
+  { key: "CAROUSEL", label: "카드뉴스" },
 ];
 
 export function StudioTabs({
@@ -63,6 +66,7 @@ export function StudioTabs({
   initialBlog,
   initialVideos,
   initialReels,
+  initialCarousel,
 }: {
   collaborationId: string;
   collaborationInfo: Omit<ContentGenerationInput, "reviewNotes">;
@@ -72,6 +76,7 @@ export function StudioTabs({
     campaignName: string | null;
     requiredKeywords: string | null;
     requiredHashtags: string | null;
+    requiredMentions?: string | null;
     adDisclosureText: string | null;
     contentGuide: string | null;
     guideRawContent: string | null;
@@ -86,6 +91,7 @@ export function StudioTabs({
   initialBlog?: { id: string; body: string; generationInput: BlogMeta | null };
   initialVideos: VideoWithUrl[];
   initialReels?: { id: string; generationInput: ReelsProject | null };
+  initialCarousel?: { id: string; generationInput: CarouselProject | null };
 }) {
   const [tab, setTab] = useState<TabKey>("BLOG");
   const [reviewNotes, setReviewNotes] = useState<ReviewNotes>(initialReviewNotes);
@@ -521,6 +527,16 @@ export function StudioTabs({
             reviewNotes={reviewNotes}
             collaborationInfo={photoBlogInfo}
             initial={initialReels}
+          />
+        </div>
+        <div className={`mt-4 ${tab === "CAROUSEL" ? "" : "hidden"}`}>
+          <CarouselStudio
+            collaborationId={collaborationId}
+            photos={photoManager.photos.filter((p) => !photoManager.excludePhotoIds.has(p.id))}
+            reviewNotes={reviewNotes}
+            collaborationInfo={photoBlogInfo}
+            guideAnalysis={guideAnalysis}
+            initial={initialCarousel}
           />
         </div>
       </section>

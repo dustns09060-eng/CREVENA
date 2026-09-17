@@ -35,7 +35,8 @@ export type ContentPlatform =
   | "THREADS"
   | "COMMENT_REPLY"
   | "DM_REPLY"
-  | "REELS";
+  | "REELS"
+  | "CAROUSEL";
 
 export type ContentStatus = "DRAFT" | "REVIEW" | "APPROVED" | "POSTED";
 
