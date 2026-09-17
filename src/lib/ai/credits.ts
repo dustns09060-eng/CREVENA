@@ -31,7 +31,13 @@ export type AiOperation =
   // captions out. Priced like a mid-size single text generation (below
   // BLOG_WRITE, since reels captions are short lines, not full paragraphs),
   // not per-scene, so re-running it doesn't scale with scene count.
-  | "REELS_PLAN";
+  | "REELS_PLAN"
+  // STEP41: the carousel card-composition call — same input shape/cost class
+  // as REELS_PLAN (guide + photo analyses + reviewNotes in, an ordered
+  // card list with headline/body out), reusing no photo re-analysis and no
+  // per-card charge. PNG rendering itself is free (client-side canvas, no AI
+  // call, no server compute — see the STEP41 report).
+  | "CAROUSEL_PLAN";
 
 export const OPERATION_CREDIT_COST: Record<AiOperation, number> = {
   CONTENT_GENERATE: 1,
@@ -44,6 +50,7 @@ export const OPERATION_CREDIT_COST: Record<AiOperation, number> = {
   GUIDE_AUTOFIX: 1,
   VIDEO_FRAME_ANALYZE: 2,
   REELS_PLAN: 5,
+  CAROUSEL_PLAN: 5,
 };
 
 export function creditLabel(operation: AiOperation): string {
