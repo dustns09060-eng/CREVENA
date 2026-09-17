@@ -2,7 +2,13 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { savePhotoBlogToLibrary, updatePhotoBlogInLibrary, type BlogMeta } from "./actions";
+import {
+  savePhotoBlogToLibrary,
+  updatePhotoBlogInLibrary,
+  markPhotoBlogPublished,
+  type BlogMeta,
+} from "./actions";
+import { NaverPublishAssistant } from "./NaverPublishAssistant";
 import {
   buildPhotoBlogPrompt,
   buildGuideCheckPrompt,
@@ -116,6 +122,7 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
   const [savedId, setSavedId] = useState<string | null>(initial?.id ?? null);
   const [guideCheck, setGuideCheck] = useState<{ missingKeywords: string[]; notes: string } | null>(null);
   const [libraryDirty, setLibraryDirty] = useState(false);
+  const [showPublishAssistant, setShowPublishAssistant] = useState(false);
   const { toastMessage, showToast } = useSaveToast();
 
   useEffect(() => {
@@ -135,16 +142,49 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
 
   const busy = writing || checking || saving || regeneratingId !== null || autoFixing;
 
-  const assembleFullText = () => {
-    if (!blogMeta) return "";
+  const assembleFullText = (meta: BlogMeta | null = blogMeta) => {
+    if (!meta) return "";
     const sections = photos
       .filter((p) => p.body_section)
       .map((p) => p.body_section)
       .join("\n\n");
-    return [blogMeta.title, "", blogMeta.intro, "", sections, "", blogMeta.closing, "", blogMeta.hashtags]
+    return [meta.title, "", meta.intro, "", sections, "", meta.closing, "", meta.hashtags]
       .join("\n")
       .trim();
   };
+
+  // STEP38: persists a publish-assistant-only change (checklist toggle,
+  // publish URL) without touching libraryDirty — these aren't content edits,
+  // so they shouldn't trigger the "저장되지 않은 변경사항" banner. No-ops
+  // (locally only) until the blog has been saved at least once, since there's
+  // no contents row yet to write into.
+  async function persistBlogMeta(next: BlogMeta) {
+    setBlogMeta(next);
+    if (!savedId) return;
+    const result = await updatePhotoBlogInLibrary({
+      contentId: savedId,
+      collaborationId,
+      body: assembleFullText(next),
+      generationInput: next,
+    });
+    if ("error" in result) setError(result.error ?? "저장에 실패했습니다.");
+  }
+
+  async function handleMarkPublished(url: string) {
+    if (!blogMeta || !savedId) return;
+    const next: BlogMeta = {
+      ...blogMeta,
+      publishState: {
+        completedStepIds: blogMeta.publishState?.completedStepIds ?? [],
+        publishedUrl: url || null,
+        publishedAt: new Date().toISOString(),
+      },
+    };
+    setBlogMeta(next);
+    const result = await markPhotoBlogPublished({ contentId: savedId, collaborationId, generationInput: next });
+    if ("error" in result) setError(result.error ?? "저장에 실패했습니다.");
+    else router.refresh();
+  }
 
   // ✓/△/✕ against the structured guide analysis (STEP35.5) when available;
   // falls back to nothing if no guide has been analyzed yet — the AI-based
@@ -207,7 +247,16 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
         hashtags: string;
       }>(raw);
 
-      setBlogMeta({ title: parsed.title, intro: parsed.intro, closing: parsed.closing, hashtags: parsed.hashtags });
+      // STEP38: a full rewrite reshuffles which photos/paragraphs exist, so
+      // any previous publish checklist progress no longer maps to anything
+      // real — start it fresh rather than carry over stale checked boxes.
+      setBlogMeta({
+        title: parsed.title,
+        intro: parsed.intro,
+        closing: parsed.closing,
+        hashtags: parsed.hashtags,
+        guideTextAtGeneration: collaborationInfo.guideRawContent ?? null,
+      });
       setSavedId(null);
       setLibraryDirty(true);
       setGeneratedWithNotes(reviewNotes);
@@ -272,7 +321,17 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
         closing: string;
         hashtags: string;
       }>(raw);
-      setBlogMeta({ title: parsed.title, intro: parsed.intro, closing: parsed.closing, hashtags: parsed.hashtags });
+      // STEP38: a small autofix patch keeps the same photos/paragraphs, so
+      // any existing publish checklist progress is still valid — only the
+      // guide-staleness snapshot needs refreshing.
+      setBlogMeta({
+        title: parsed.title,
+        intro: parsed.intro,
+        closing: parsed.closing,
+        hashtags: parsed.hashtags,
+        guideTextAtGeneration: collaborationInfo.guideRawContent ?? null,
+        publishState: blogMeta.publishState,
+      });
       setLibraryDirty(true);
       await applyGeneratedSections(parsed.sections);
       router.refresh();
@@ -399,15 +458,24 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
           <PlatformStatusPill status={writing ? "GENERATING" : blogMeta ? "DONE" : "EMPTY"} />
           {blogMeta && <SaveStatusBadge state={libraryDirty ? "dirty" : "saved"} />}
         </div>
-        <div className="flex flex-col items-end gap-0.5">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
-            onClick={handleWriteBlog}
-            disabled={busy || !hasBlogPhotos}
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+            onClick={() => setShowPublishAssistant(true)}
+            disabled={!blogMeta}
+            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-40"
           >
-            {writing ? "블로그 작성 중..." : blogMeta ? "다시 작성" : "블로그 작성"}
+            발행 도우미
           </button>
-          <span className="text-[10px] text-zinc-400">{OPERATION_CREDIT_COST.BLOG_WRITE} 크레딧 사용</span>
+          <div className="flex flex-col items-end gap-0.5">
+            <button
+              onClick={handleWriteBlog}
+              disabled={busy || !hasBlogPhotos}
+              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+            >
+              {writing ? "블로그 작성 중..." : blogMeta ? "다시 작성" : "블로그 작성"}
+            </button>
+            <span className="text-[10px] text-zinc-400">{OPERATION_CREDIT_COST.BLOG_WRITE} 크레딧 사용</span>
+          </div>
         </div>
       </div>
 
@@ -593,6 +661,21 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
             </div>
           )}
         </div>
+      )}
+
+      {showPublishAssistant && blogMeta && (
+        <NaverPublishAssistant
+          blogMeta={blogMeta}
+          photos={photos}
+          usablePhotos={usablePhotos}
+          guideItems={guideItems}
+          currentGuideRawContent={collaborationInfo.guideRawContent}
+          libraryDirty={libraryDirty}
+          isSaved={savedId !== null}
+          onClose={() => setShowPublishAssistant(false)}
+          onPersist={persistBlogMeta}
+          onMarkPublished={handleMarkPublished}
+        />
       )}
     </div>
   );

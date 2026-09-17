@@ -117,7 +117,31 @@ export async function deletePhoto(
 // hashtags) into the existing (previously-Instagram/Threads-only)
 // generation_input column, so it can be restored on refresh the same way
 // PlatformPanel restores parts — mirrors the saveContent/updateContent split.
-export type BlogMeta = { title: string; intro: string; closing: string; hashtags: string };
+//
+// STEP38: the Naver publish assistant's own state rides along inside this
+// same jsonb column instead of a new table/migration —
+// - `guideTextAtGeneration`: the brand guide's raw text at the moment this
+//   blog was last written/auto-fixed, so the assistant can warn "가이드가
+//   변경되었습니다" by comparing it against the guide's current raw text.
+// - `publishState`: which sections the user has manually checked off while
+//   copying into Naver, plus the URL/timestamp once they mark it published.
+//   `completedStepIds` holds ids like "title", "intro", "photo:<photoId>",
+//   "closing", "hashtags" — any id for a photo that no longer exists (or no
+//   longer has a paragraph) is simply ignored when computing progress.
+export type NaverPublishState = {
+  completedStepIds: string[];
+  publishedUrl?: string | null;
+  publishedAt?: string | null;
+};
+
+export type BlogMeta = {
+  title: string;
+  intro: string;
+  closing: string;
+  hashtags: string;
+  guideTextAtGeneration?: string | null;
+  publishState?: NaverPublishState;
+};
 
 export async function savePhotoBlogToLibrary(input: {
   collaborationId: string;
@@ -169,4 +193,27 @@ export async function updatePhotoBlogInLibrary(input: {
 
   revalidatePath("/content-library");
   return { success: true as const, id: input.contentId };
+}
+
+// STEP38: marks the blog's `contents` row as actually published to Naver.
+// Reuses the existing `status` column ("POSTED" already exists in the
+// ContentStatus check constraint — no migration) and stores the URL/time
+// inside generation_input.publishState (see the BlogMeta comment above)
+// instead of adding published_url/published_at columns.
+export async function markPhotoBlogPublished(input: {
+  contentId: string;
+  collaborationId: string;
+  generationInput: BlogMeta;
+}) {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("contents")
+    .update({ status: "POSTED", generation_input: input.generationInput as never })
+    .eq("id", input.contentId);
+
+  if (error) return { error: `저장 실패: ${error.message}` };
+
+  revalidatePath("/content-library");
+  revalidatePath(`/collaborations/${input.collaborationId}`);
+  return { success: true as const };
 }

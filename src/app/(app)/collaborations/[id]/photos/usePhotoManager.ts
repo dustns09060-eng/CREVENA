@@ -18,7 +18,7 @@ import {
 } from "@/lib/ai/photo-blog-prompts";
 import type { CollaborationPhoto } from "@/types/database";
 
-type PhotoWithUrl = CollaborationPhoto & { fullUrl: string; thumbUrl: string };
+export type PhotoWithUrl = CollaborationPhoto & { fullUrl: string; thumbUrl: string };
 
 // STEP35.5: photo CRUD/AI-analysis/ordering, lifted out of PhotoBlogStudio so
 // it can be rendered once at the top of the studio (사진 준비, step 2) and
