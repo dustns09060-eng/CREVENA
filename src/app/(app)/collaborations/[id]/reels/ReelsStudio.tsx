@@ -278,6 +278,16 @@ export function ReelsStudio({
         onLoadedMetadata={(e) => {
           if (scene.trimStart) e.currentTarget.currentTime = scene.trimStart;
         }}
+        // STEP39 production 후속 검증에서 발견: trimStart는 재생 시작점에
+        // 반영되지만 trimEnd는 아무 데서도 쓰이지 않아, 미리보기가 trim
+        // 종료 지점을 넘겨 재생을 계속했다. trimEnd에 도달하면 그 자리에서
+        // 멈추도록(=다음 scene으로 넘어갈 때까지 정지 프레임 유지) 수정.
+        onTimeUpdate={(e) => {
+          if (scene.trimEnd && e.currentTarget.currentTime >= scene.trimEnd) {
+            e.currentTarget.pause();
+            e.currentTarget.currentTime = scene.trimEnd;
+          }
+        }}
       />
     );
   }
