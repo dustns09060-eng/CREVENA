@@ -41,63 +41,61 @@ function extractVideoMetadata(file: File): Promise<{ duration: number; width: nu
   });
 }
 
-// STEP39 item 6/9: extracts up to 3 representative JPEG frames from a local
-// video File, entirely in the browser (canvas) — the raw video is never
-// uploaded anywhere for analysis purposes, only these small still frames are
-// sent to the vision endpoint. Frames are transient (never written to
-// Storage), so there is nothing to revoke besides the one object URL used to
-// play the file for capture.
+// STEP40-1 root cause fix: this used to only accept a local File object, so
+// it only worked in the exact same browser session/component instance the
+// video was picked in (kept in localFilesRef). Any remount — switching tabs,
+// reloading, coming back later — lost that File, and handleAnalyzeAll below
+// silently skipped analysis for that video instead of failing loudly. That
+// silent skip is the structural reason videos so often stayed "미분석"
+// (and therefore excluded from the reels-plan media list) even though the
+// user genuinely tried to analyze them. Extracting from the video's own
+// signed URL instead — the exact same URL already used for playback/render —
+// makes analysis work regardless of session state, exactly like photo
+// analysis (which re-fetches from Storage server-side by id, never from an
+// in-memory File). Frames are transient (never written to Storage).
 async function extractFrames(
-  file: File,
+  src: string,
   duration: number,
   timestamps: number[],
 ): Promise<{ timestampSeconds: number; base64Data: string }[]> {
-  const url = URL.createObjectURL(file);
-  try {
-    const videoEl = document.createElement("video");
-    videoEl.preload = "auto";
-    videoEl.muted = true;
-    videoEl.src = url;
+  const videoEl = document.createElement("video");
+  videoEl.preload = "auto";
+  videoEl.muted = true;
+  videoEl.crossOrigin = "anonymous";
+  videoEl.src = src;
+  await new Promise<void>((resolve, reject) => {
+    videoEl.onloadeddata = () => resolve();
+    videoEl.onerror = () => reject(new Error("영상을 불러오지 못했습니다. 링크가 만료되었을 수 있습니다."));
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.min(videoEl.videoWidth || 640, 640);
+  canvas.height = Math.round(canvas.width * ((videoEl.videoHeight || 1) / (videoEl.videoWidth || 1)));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("프레임을 추출할 수 없습니다.");
+
+  const frames: { timestampSeconds: number; base64Data: string }[] = [];
+  for (const t of timestamps) {
+    const seekTo = Math.min(Math.max(t, 0), Math.max(duration - 0.1, 0));
     await new Promise<void>((resolve, reject) => {
-      videoEl.onloadeddata = () => resolve();
-      videoEl.onerror = () => reject(new Error("영상을 불러오지 못했습니다."));
+      const onSeeked = () => {
+        videoEl.removeEventListener("seeked", onSeeked);
+        resolve();
+      };
+      videoEl.addEventListener("seeked", onSeeked);
+      videoEl.onerror = () => reject(new Error("프레임 탐색에 실패했습니다."));
+      videoEl.currentTime = seekTo;
     });
-
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.min(videoEl.videoWidth || 640, 640);
-    canvas.height = Math.round(canvas.width * ((videoEl.videoHeight || 1) / (videoEl.videoWidth || 1)));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("프레임을 추출할 수 없습니다.");
-
-    const frames: { timestampSeconds: number; base64Data: string }[] = [];
-    for (const t of timestamps) {
-      const seekTo = Math.min(Math.max(t, 0), Math.max(duration - 0.1, 0));
-      await new Promise<void>((resolve, reject) => {
-        const onSeeked = () => {
-          videoEl.removeEventListener("seeked", onSeeked);
-          resolve();
-        };
-        videoEl.addEventListener("seeked", onSeeked);
-        videoEl.onerror = () => reject(new Error("프레임 탐색에 실패했습니다."));
-        videoEl.currentTime = seekTo;
-      });
-      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-      frames.push({ timestampSeconds: seekTo, base64Data: dataUrl.split(",")[1] ?? "" });
-    }
-    return frames;
-  } finally {
-    URL.revokeObjectURL(url);
+    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+    frames.push({ timestampSeconds: seekTo, base64Data: dataUrl.split(",")[1] ?? "" });
   }
+  return frames;
 }
 
 export function useVideoManager(collaborationId: string, initialVideos: VideoWithUrl[]) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Local File objects, kept only for this browser session so newly
-  // uploaded clips can have frames re-extracted for analysis without
-  // re-downloading the video — see handleAnalyzeAll's session-only note.
-  const localFilesRef = useRef<Map<string, File>>(new Map());
 
   const [videos, setVideos] = useState<VideoWithUrl[]>(initialVideos);
   const [syncedVideos, setSyncedVideos] = useState(initialVideos);
@@ -169,7 +167,6 @@ export function useVideoManager(collaborationId: string, initialVideos: VideoWit
           height: meta.height,
         });
         if ("error" in result) throw new Error(result.error);
-        localFilesRef.current.set(result.id, file);
       }
       router.refresh();
     } catch (err) {
@@ -180,9 +177,11 @@ export function useVideoManager(collaborationId: string, initialVideos: VideoWit
     }
   }
 
-  // STEP39 item 6: analyzes only videos that don't already have
-  // frame_analysis — re-running never re-spends credits on already-analyzed
-  // clips, mirroring usePhotoManager's handleAnalyzeAll exactly.
+  // STEP39 item 6 / STEP40-1 fix: analyzes only videos that don't already
+  // have frame_analysis — re-running never re-spends credits on
+  // already-analyzed clips, mirroring usePhotoManager's handleAnalyzeAll.
+  // Extracts frames from each video's own signed URL (video.url), so this
+  // now works regardless of upload session/remount — see extractFrames.
   async function handleAnalyzeAll() {
     const targets = videos.filter((v) => !v.frame_analysis);
     if (targets.length === 0) return;
@@ -192,20 +191,9 @@ export function useVideoManager(collaborationId: string, initialVideos: VideoWit
       setAnalyzeProgress({ done: 0, total: targets.length });
       let done = 0;
       for (const video of targets) {
-        const file = localFilesRef.current.get(video.id);
-        if (!file) {
-          // The local File is only available in the same browser session it
-          // was picked in — after a refresh there's no local blob to re-seek
-          // frames from. This is a known V1 limitation (see the STEP39
-          // report item 35): re-analyzing after a reload isn't supported,
-          // only analyzing right after upload in the same session is.
-          done += 1;
-          setAnalyzeProgress({ done, total: targets.length });
-          continue;
-        }
         const duration = video.duration_seconds ?? 0;
         const timestamps = [0, duration * 0.4, duration * 0.8].filter((t) => Number.isFinite(t));
-        const frames = await extractFrames(file, duration, timestamps);
+        const frames = await extractFrames(video.url, duration, timestamps);
         const res = await fetch("/api/ai/analyze-video-frames", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
