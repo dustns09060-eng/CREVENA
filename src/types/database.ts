@@ -34,7 +34,8 @@ export type ContentPlatform =
   | "NAVER_BLOG"
   | "THREADS"
   | "COMMENT_REPLY"
-  | "DM_REPLY";
+  | "DM_REPLY"
+  | "REELS";
 
 export type ContentStatus = "DRAFT" | "REVIEW" | "APPROVED" | "POSTED";
 
@@ -324,6 +325,42 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["collaboration_photos"]["Insert"]>;
+        Relationships: [];
+      };
+      collaboration_videos: {
+        Row: {
+          id: string;
+          collaboration_id: string;
+          user_id: string;
+          storage_path: string;
+          original_filename: string | null;
+          mime_type: string | null;
+          file_size_bytes: number | null;
+          duration_seconds: number | null;
+          width: number | null;
+          height: number | null;
+          display_order: number;
+          frame_analysis: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          collaboration_id: string;
+          user_id: string;
+          storage_path: string;
+          original_filename?: string | null;
+          mime_type?: string | null;
+          file_size_bytes?: number | null;
+          duration_seconds?: number | null;
+          width?: number | null;
+          height?: number | null;
+          display_order?: number;
+          frame_analysis?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["collaboration_videos"]["Insert"]>;
         Relationships: [];
       };
       ai_usage_logs: {
@@ -638,4 +675,5 @@ export type Content = Database["public"]["Tables"]["contents"]["Row"];
 export type Schedule = Database["public"]["Tables"]["schedules"]["Row"];
 export type CreatorStyle = Database["public"]["Tables"]["creator_styles"]["Row"];
 export type CollaborationPhoto = Database["public"]["Tables"]["collaboration_photos"]["Row"];
+export type CollaborationVideo = Database["public"]["Tables"]["collaboration_videos"]["Row"];
 export type AiUsageLog = Database["public"]["Tables"]["ai_usage_logs"]["Row"];

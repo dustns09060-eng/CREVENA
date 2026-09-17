@@ -6,6 +6,9 @@ import { usePhotoManager } from "../photos/usePhotoManager";
 import { PhotoSection } from "./PhotoSection";
 import { PlatformPanel, type PlatformPanelHandle, type PlatformParts } from "./PlatformPanel";
 import { GuideAnalysisCard } from "./GuideAnalysisCard";
+import { ReelsStudio } from "../reels/ReelsStudio";
+import type { VideoWithUrl } from "../reels/useVideoManager";
+import type { ReelsProject } from "../reels/actions";
 import {
   SectionHeader,
   Accordion,
@@ -58,6 +61,8 @@ export function StudioTabs({
   initialInstagram,
   initialThreads,
   initialBlog,
+  initialVideos,
+  initialReels,
 }: {
   collaborationId: string;
   collaborationInfo: Omit<ContentGenerationInput, "reviewNotes">;
@@ -79,6 +84,8 @@ export function StudioTabs({
   initialInstagram?: { id: string; body: string; status: ContentStatus; generationInput: PlatformParts | null };
   initialThreads?: { id: string; body: string; status: ContentStatus; generationInput: PlatformParts | null };
   initialBlog?: { id: string; body: string; generationInput: BlogMeta | null };
+  initialVideos: VideoWithUrl[];
+  initialReels?: { id: string; generationInput: ReelsProject | null };
 }) {
   const [tab, setTab] = useState<TabKey>("BLOG");
   const [reviewNotes, setReviewNotes] = useState<ReviewNotes>(initialReviewNotes);
@@ -387,8 +394,7 @@ export function StudioTabs({
           ))}
         </div>
         <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-          <PlatformStatusPill status="COMING_SOON" />
-          <span>Reels — 영상 제작 기능은 다음 단계에서 제공됩니다.</span>
+          <span>Reels는 아래 &quot;Reels&quot; 탭에서 별도로 만들 수 있습니다 (AI 콘텐츠 만들기 일괄 생성에는 아직 포함되지 않습니다).</span>
         </div>
 
         <div className="mt-5 flex flex-col items-stretch gap-1 border-t border-zinc-100 pt-4">
@@ -508,9 +514,14 @@ export function StudioTabs({
           />
         </div>
         <div className={`mt-4 ${tab === "REELS" ? "" : "hidden"}`}>
-          <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-8 text-center text-sm text-zinc-500">
-            Reels는 준비 중입니다 (Coming Soon). 영상 편집/업로드는 이번 단계 범위에 포함되지 않습니다.
-          </div>
+          <ReelsStudio
+            collaborationId={collaborationId}
+            photos={photoManager.photos.filter((p) => !photoManager.excludePhotoIds.has(p.id))}
+            initialVideos={initialVideos}
+            reviewNotes={reviewNotes}
+            collaborationInfo={photoBlogInfo}
+            initial={initialReels}
+          />
         </div>
       </section>
     </div>

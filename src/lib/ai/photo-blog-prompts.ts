@@ -27,7 +27,7 @@ export function parseJsonResponse<T>(text: string): T {
 // 식의 시간에 따른 변화, 재구매 의사 — is fabrication if none of the three sources says
 // so, even if it sounds like a plausible, harmless embellishment. A static product photo
 // is NOT evidence of a reaction; only an actual user memo describing that reaction is.
-const NO_FABRICATION_RULE = [
+export const NO_FABRICATION_RULE = [
   "너가 쓸 수 있는 사실의 원천은 딱 세 가지뿐이다: (1) 사진관찰사실 — 사진에 실제로 보이는 것만,",
   "(2) 사용자입력경험 — 사용자가 직접 입력한 후기 메모에 적힌 내용만, (3) 업체가이드객관정보 — 브랜드",
   "가이드라인에 명시된 제품 사실만. 이 세 가지 중 하나로 뒷받침되지 않는 내용은 절대로 지어내지 마라.",
@@ -132,7 +132,7 @@ export type PhotoBlogInput = {
   photos: PhotoSummary[];
 };
 
-const REVIEW_NOTE_LABELS: Record<keyof ReviewNotes, string> = {
+export const REVIEW_NOTE_LABELS: Record<keyof ReviewNotes, string> = {
   actualReview: "실제 사용 후기",
   pros: "좋았던 점",
   cons: "아쉬웠던 점",

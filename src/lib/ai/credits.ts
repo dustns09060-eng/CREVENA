@@ -21,7 +21,17 @@ export type AiOperation =
   // required phrase, hashtags, account tags, min length) without touching
   // anything experience-based. Same cost class as PARAGRAPH_REGENERATE — a
   // targeted text patch, not a full rewrite.
-  | "GUIDE_AUTOFIX";
+  | "GUIDE_AUTOFIX"
+  // STEP39: one vision call per video, analyzing 2-3 extracted representative
+  // frames together (never the raw video) — same cost class as PHOTO_ANALYSIS
+  // but priced slightly higher since it's 2-3 images in one call, not one.
+  | "VIDEO_FRAME_ANALYZE"
+  // STEP39: the reels scene-composition call — guide + photo analyses +
+  // video frame analyses + reviewNotes in, an ordered scene list with
+  // captions out. Priced like a mid-size single text generation (below
+  // BLOG_WRITE, since reels captions are short lines, not full paragraphs),
+  // not per-scene, so re-running it doesn't scale with scene count.
+  | "REELS_PLAN";
 
 export const OPERATION_CREDIT_COST: Record<AiOperation, number> = {
   CONTENT_GENERATE: 1,
@@ -32,6 +42,8 @@ export const OPERATION_CREDIT_COST: Record<AiOperation, number> = {
   PARAGRAPH_REGENERATE: 1,
   GUIDE_ANALYZE: 2,
   GUIDE_AUTOFIX: 1,
+  VIDEO_FRAME_ANALYZE: 2,
+  REELS_PLAN: 5,
 };
 
 export function creditLabel(operation: AiOperation): string {

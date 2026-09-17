@@ -5,11 +5,14 @@ import { StudioTabs } from "./StudioTabs";
 import type { ContentPlatformKey, ReviewNotes } from "@/lib/ai/prompts";
 import type { PlatformParts } from "./PlatformPanel";
 import type { BlogMeta } from "../photos/actions";
+import type { ReelsProject } from "../reels/actions";
 import type { ContentStatus } from "@/types/database";
 
 const BUCKET = "collaboration-photos";
+const VIDEO_BUCKET = "collaboration-videos";
 const STUDIO_PLATFORMS: ContentPlatformKey[] = ["INSTAGRAM_FEED", "THREADS"];
 const BLOG_PLATFORM = "NAVER_BLOG";
+const REELS_PLATFORM = "REELS";
 
 export default async function CollaborationContentPage({
   params,
@@ -47,7 +50,7 @@ export default async function CollaborationContentPage({
     .from("contents")
     .select("id, platform, body, status, generation_input")
     .eq("collaboration_id", id)
-    .in("platform", [...STUDIO_PLATFORMS, BLOG_PLATFORM])
+    .in("platform", [...STUDIO_PLATFORMS, BLOG_PLATFORM, REELS_PLATFORM])
     .order("created_at", { ascending: false });
 
   const initialContents: Partial<
@@ -74,6 +77,11 @@ export default async function CollaborationContentPage({
       }
     : undefined;
 
+  const latestReels = existingContents?.find((c) => c.platform === REELS_PLATFORM);
+  const initialReels = latestReels
+    ? { id: latestReels.id, generationInput: (latestReels.generation_input as ReelsProject | null) ?? null }
+    : undefined;
+
   const { data: photos } = await supabase
     .from("collaboration_photos")
     .select("*")
@@ -92,6 +100,18 @@ export default async function CollaborationContentPage({
   );
 
   const photosWithUrls = photoList.map((p, i) => ({ ...p, ...signedUrls[i] }));
+
+  const { data: videos } = await supabase
+    .from("collaboration_videos")
+    .select("*")
+    .eq("collaboration_id", id)
+    .order("display_order", { ascending: true });
+
+  const videoList = videos ?? [];
+  const videoSignedUrls = await Promise.all(
+    videoList.map((v) => supabase.storage.from(VIDEO_BUCKET).createSignedUrl(v.storage_path, 3600)),
+  );
+  const videosWithUrls = videoList.map((v, i) => ({ ...v, url: videoSignedUrls[i].data?.signedUrl ?? "" }));
 
   const styleSamples = (styles ?? []).map((s) => ({
     styleName: s.style_name,
@@ -123,6 +143,8 @@ export default async function CollaborationContentPage({
           initialInstagram={initialContents.INSTAGRAM_FEED}
           initialThreads={initialContents.THREADS}
           initialBlog={initialBlog}
+          initialVideos={videosWithUrls}
+          initialReels={initialReels}
           collaborationInfo={{
             brandName: collaboration.brand_name,
             productName: collaboration.product_name,
