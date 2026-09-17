@@ -59,6 +59,24 @@ export default async function CollaborationDetailPage({
     .eq("collaboration_id", id)
     .maybeSingle();
 
+  // STEP38: "네이버 블로그 발행 완료" status for the 콘텐츠 제작실 tab —
+  // reuses the existing contents.status ("POSTED") and generation_input
+  // (publishState.publishedUrl), no new table/column.
+  const { data: blogContent } = await supabase
+    .from("contents")
+    .select("status, generation_input")
+    .eq("collaboration_id", id)
+    .eq("platform", "NAVER_BLOG")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const blogPublishedUrl =
+    blogContent?.status === "POSTED"
+      ? ((blogContent.generation_input as { publishState?: { publishedUrl?: string | null } } | null)?.publishState
+          ?.publishedUrl ?? null)
+      : null;
+  const blogPublished = blogContent?.status === "POSTED";
+
   return (
     <div>
       <Link href="/collaborations" className="text-sm text-zinc-500 hover:text-zinc-900">
@@ -173,6 +191,21 @@ export default async function CollaborationDetailPage({
               협찬 정보와 업로드한 사진을 공유 컨텍스트로 사용해 블로그 / Instagram / Threads 콘텐츠를
               한 곳에서 만듭니다.
             </p>
+            {blogPublished && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                <span>✓ 네이버 블로그 발행 완료</span>
+                {blogPublishedUrl && (
+                  <a
+                    href={blogPublishedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-full border border-emerald-300 px-2.5 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+                  >
+                    게시물 보기
+                  </a>
+                )}
+              </div>
+            )}
             <Link
               href={`/collaborations/${id}/content`}
               className="mt-3 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
