@@ -70,7 +70,8 @@ export async function POST(request: Request) {
     .download(photo.storage_path);
 
   if (downloadError || !fileBlob) {
-    return NextResponse.json({ error: `이미지를 불러오지 못했습니다: ${downloadError?.message}` }, { status: 500 });
+    if (downloadError) console.error("analyze-photo: storage download failed", downloadError.message);
+    return NextResponse.json({ error: "이미지를 불러오지 못했습니다. 잠시 후 다시 시도해주세요." }, { status: 500 });
   }
 
   try {

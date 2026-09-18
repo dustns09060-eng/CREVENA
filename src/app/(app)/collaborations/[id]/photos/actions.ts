@@ -24,12 +24,18 @@ export async function uploadPhoto(collaborationId: string, formData: FormData) {
   const { error: uploadError } = await supabase.storage
     .from(BUCKET)
     .upload(photoPath, photoFile, { contentType: "image/jpeg" });
-  if (uploadError) return { error: `업로드 실패: ${uploadError.message}` };
+  if (uploadError) {
+    console.error("uploadPhoto: storage upload failed", uploadError.message);
+    return { error: "사진 업로드에 실패했습니다. 잠시 후 다시 시도해주세요." };
+  }
 
   const { error: thumbError } = await supabase.storage
     .from(BUCKET)
     .upload(thumbPath, thumbFile, { contentType: "image/jpeg" });
-  if (thumbError) return { error: `썸네일 업로드 실패: ${thumbError.message}` };
+  if (thumbError) {
+    console.error("uploadPhoto: thumbnail upload failed", thumbError.message);
+    return { error: "사진 업로드에 실패했습니다. 잠시 후 다시 시도해주세요." };
+  }
 
   const { count } = await supabase
     .from("collaboration_photos")
@@ -50,7 +56,10 @@ export async function uploadPhoto(collaborationId: string, formData: FormData) {
     .select("id")
     .single();
 
-  if (error) return { error: `저장 실패: ${error.message}` };
+  if (error) {
+    console.error("uploadPhoto: db insert failed", error.message);
+    return { error: "사진 저장에 실패했습니다. 잠시 후 다시 시도해주세요." };
+  }
 
   revalidatePath(`/collaborations/${collaborationId}/photos`);
   return { success: true as const, id: data.id };
@@ -169,7 +178,10 @@ export async function savePhotoBlogToLibrary(input: {
     .select("id")
     .single();
 
-  if (error) return { error: `저장 실패: ${error.message}` };
+  if (error) {
+    console.error("saveBlog: db write failed", error.message);
+    return { error: "저장에 실패했습니다. 잠시 후 다시 시도해주세요." };
+  }
 
   revalidatePath("/content-library");
   return { success: true as const, id: data.id };
@@ -189,7 +201,10 @@ export async function updatePhotoBlogInLibrary(input: {
     .update({ body: input.body, generation_input: (input.generationInput ?? null) as never })
     .eq("id", input.contentId);
 
-  if (error) return { error: `저장 실패: ${error.message}` };
+  if (error) {
+    console.error("saveBlog: db write failed", error.message);
+    return { error: "저장에 실패했습니다. 잠시 후 다시 시도해주세요." };
+  }
 
   revalidatePath("/content-library");
   return { success: true as const, id: input.contentId };
@@ -211,7 +226,10 @@ export async function markPhotoBlogPublished(input: {
     .update({ status: "POSTED", generation_input: input.generationInput as never })
     .eq("id", input.contentId);
 
-  if (error) return { error: `저장 실패: ${error.message}` };
+  if (error) {
+    console.error("saveBlog: db write failed", error.message);
+    return { error: "저장에 실패했습니다. 잠시 후 다시 시도해주세요." };
+  }
 
   revalidatePath("/content-library");
   revalidatePath(`/collaborations/${input.collaborationId}`);
