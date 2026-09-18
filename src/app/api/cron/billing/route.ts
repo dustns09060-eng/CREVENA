@@ -27,7 +27,7 @@ function extractPaymentError(error: unknown): { code: string; type: string } {
 // already trusts (plan_tier) and plans.ts (price). See CLAUDE-facing notes
 // in supabase/migrations/0015_recurring_billing.sql for the concurrency/
 // idempotency design (claim_billing_attempt).
-export async function POST(request: Request) {
+async function runBillingCycle(request: Request) {
   const secret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
   if (!secret || authHeader !== `Bearer ${secret}`) {
@@ -198,4 +198,19 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
+}
+
+// Vercel Cron Jobs invoke the scheduled path with a **GET** request carrying
+// `Authorization: Bearer $CRON_SECRET` — there is no way to configure the
+// method in vercel.json. This route previously exported only POST, so the
+// scheduled invocation was answered with 405 Method Not Allowed by Next's
+// route handler and recurring billing never actually ran (verified locally:
+// GET -> 405, POST -> 401). Both verbs now share one handler so the
+// CRON_SECRET check and the business logic stay in exactly one place.
+export async function GET(request: Request) {
+  return runBillingCycle(request);
+}
+
+export async function POST(request: Request) {
+  return runBillingCycle(request);
 }

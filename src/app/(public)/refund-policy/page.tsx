@@ -9,6 +9,7 @@ import {
   LegalTable,
   OperatorTodo,
 } from "@/components/layout/LegalPage";
+import { SUPPORT_EMAIL, SUPPORT_EMAIL_HREF } from "@/lib/support";
 
 export const metadata: Metadata = {
   title: "환불정책",
@@ -127,7 +128,11 @@ export default function RefundPolicyPage() {
           ]}
         />
         <LegalText>
-          환불 요청 시 가입하신 이메일 주소와 결제 일시를 함께 알려주시면 확인이 빠릅니다. 결제 내역은{" "}
+          환불 요청은{" "}
+          <a href={SUPPORT_EMAIL_HREF} className="font-medium text-brand-700 underline underline-offset-2">
+            {SUPPORT_EMAIL}
+          </a>
+          으로 접수해 주세요. 가입하신 이메일 주소와 결제 일시를 함께 알려주시면 확인이 빠릅니다. 결제 내역은{" "}
           <b>설정 &gt; 결제</b> 화면에서 확인하실 수 있습니다.
         </LegalText>
         <OperatorTodo>
@@ -142,11 +147,16 @@ export default function RefundPolicyPage() {
 
       <LegalSection heading="8. 문의">
         <LegalText>
-          결제, 해지, 환불에 관한 문의는{" "}
+          결제, 해지, 환불에 관한 문의와 환불 요청은{" "}
+          <a href={SUPPORT_EMAIL_HREF} className="font-medium text-brand-700 underline underline-offset-2">
+            {SUPPORT_EMAIL}
+          </a>
+          으로 접수하실 수 있으며,{" "}
           <Link href="/contact" className="font-medium text-brand-700 underline underline-offset-2">
             문의하기
           </Link>{" "}
-          페이지를 통해 접수하실 수 있습니다. 서비스 이용 전반에 관한 사항은{" "}
+          페이지에서도 안내를 확인하실 수 있습니다. 환불은 접수 후 운영자가 직접 확인하여 처리하며, 자동으로 일할
+          계산되어 환불되는 절차는 제공하지 않습니다. 서비스 이용 전반에 관한 사항은{" "}
           <Link href="/terms" className="font-medium text-brand-700 underline underline-offset-2">
             이용약관
           </Link>

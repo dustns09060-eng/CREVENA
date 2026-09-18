@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { StyleManager } from "./StyleManager";
+import { DangerZone } from "./DangerZone";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +12,22 @@ export default async function SettingsPage() {
     .from("creator_styles")
     .select("*")
     .order("created_at", { ascending: false });
+
+  // RLS restricts this to the caller's own row. Only the three subscription
+  // state columns are read — payment_subscription_id (the billing key) is
+  // revoked from `authenticated` at the column level and is never needed
+  // here; the deletion route re-checks all of this server-side anyway.
+  const { data: profile } = await supabase
+    .from("users")
+    .select("plan_tier, subscription_status, cancel_at_period_end")
+    .maybeSingle();
+
+  const blockedBySubscription = Boolean(
+    profile &&
+      profile.plan_tier !== "FREE" &&
+      ["ACTIVE", "PAST_DUE"].includes(profile.subscription_status) &&
+      !profile.cancel_at_period_end,
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col">
@@ -35,6 +52,8 @@ export default async function SettingsPage() {
           <StyleManager styles={styles ?? []} />
         </div>
       </Card>
+
+      <DangerZone blockedBySubscription={blockedBySubscription} />
     </div>
   );
 }

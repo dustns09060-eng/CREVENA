@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SUPPORT_EMAIL, SUPPORT_EMAIL_HREF } from "@/lib/support";
 
 // STEP45: one shared footer for the public surface (landing + the four
 // policy/info pages) so the legal links are reachable from anywhere a
@@ -9,6 +10,10 @@ import Link from "next/link";
 // obviously-placeholder text into a production-facing footer would be worse
 // than omitting it — see the STEP45 report's "운영자 입력 필요 정보" section.
 // Add the block here once the operator supplies real values.
+//
+// STEP45.1: the 고객문의 email IS now confirmed, so it is shown below. It is
+// the only contact detail added — no phone number, no address, and still no
+// 사업자등록번호/통신판매업 신고번호, because none of those were provided.
 const FOOTER_LINKS = [
   { href: "/terms", label: "이용약관" },
   { href: "/privacy", label: "개인정보처리방침" },
@@ -23,6 +28,12 @@ export function SiteFooter() {
         <div className="flex flex-col gap-1">
           <span className="text-sm font-bold text-zinc-700">CREVENA</span>
           <span className="text-xs text-zinc-400">크리에이터를 위한 협찬 콘텐츠 제작 도구</span>
+          <span className="text-xs text-zinc-400">
+            고객문의{" "}
+            <a href={SUPPORT_EMAIL_HREF} className="transition-colors hover:text-zinc-900">
+              {SUPPORT_EMAIL}
+            </a>
+          </span>
         </div>
 
         <nav className="flex flex-wrap items-center gap-x-4 gap-y-2">
