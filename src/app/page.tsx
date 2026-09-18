@@ -1,9 +1,24 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PLAN_CONFIGS } from "@/lib/plans";
 import { Button } from "@/components/ui/Button";
 import { ArrowRightIcon, CheckIcon, ImageIcon } from "@/components/ui/Icon";
+import { PublicHeader } from "@/components/layout/PublicHeader";
+import { SiteFooter } from "@/components/layout/SiteFooter";
+
+// STEP45: the landing page is the first thing a prospective paying customer
+// sees, so its claims are held to the same standard as the policy pages —
+// no invented user counts, no testimonials, no unverified % savings, and no
+// wording that implies CREVENA posts to any SNS on the user's behalf. The
+// pricing preview below reads PLAN_CONFIGS directly so it can never drift
+// from the real charge amount.
+export const metadata: Metadata = {
+  title: { absolute: "CREVENA — 협찬 콘텐츠 제작 도구" },
+  description:
+    "협찬 가이드와 사진만 넣으면 블로그·Instagram·Threads·카드뉴스·Reels 콘텐츠 초안을 AI가 준비해 드립니다.",
+};
 
 // STEP43 item 10-15: CREVENA had no public marketing page at all — "/"
 // unconditionally redirected to /dashboard, which middleware then bounced
@@ -21,19 +36,7 @@ export default async function LandingPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="border-b border-zinc-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
-          <span className="text-lg font-bold text-zinc-900">CREVENA</span>
-          <div className="flex items-center gap-2">
-            <Link href="/login" className="px-2 text-sm font-medium text-zinc-600 hover:text-zinc-900">
-              로그인
-            </Link>
-            <Link href="/login?mode=signup">
-              <Button size="sm">무료로 시작하기</Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+      <PublicHeader />
 
       {/* Hero */}
       <section className="border-b border-zinc-200 bg-white">
@@ -41,10 +44,14 @@ export default async function LandingPage() {
           <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
             크리에이터를 위한 협찬 콘텐츠 제작 SaaS
           </span>
-          <h1 className="max-w-2xl text-3xl leading-tight font-bold text-zinc-900 sm:text-5xl">
+          {/* STEP45: `break-keep` (word-break: keep-all) is essential for
+              Korean — without it the browser breaks inside a word, so
+              "넣으세요" wrapped as "넣으세 / 요". Widened to max-w-3xl so the
+              longer second line fits at sm:text-5xl. */}
+          <h1 className="max-w-3xl text-3xl leading-tight font-bold break-keep text-zinc-900 sm:text-5xl">
             협찬 가이드와 사진만 넣으세요.
             <br />
-            블로그부터 인스타·릴스까지 한 번에.
+            블로그부터 인스타·릴스까지 AI가 준비해드려요.
           </h1>
           <p className="max-w-xl text-sm leading-relaxed text-zinc-500 sm:text-base">
             CREVENA가 업체 협찬 가이드를 분석하고, 실제 사진과 직접 남긴 후기를 바탕으로 블로그·Instagram·Threads·카드뉴스·Reels
@@ -112,7 +119,13 @@ export default async function LandingPage() {
           ))}
         </div>
         <p className="mt-6 text-center text-xs text-zinc-400">
-          지원 채널: 블로그 · Instagram · Threads · 카드뉴스 · Reels
+          만들 수 있는 콘텐츠: 블로그 · Instagram · Threads · 카드뉴스 · Reels
+        </p>
+        {/* STEP45: stated up front on the landing page, not buried in the
+            terms — CREVENA has no SNS integration and never posts for the
+            user. Setting that expectation before signup is the honest move. */}
+        <p className="mx-auto mt-2 max-w-md text-center text-xs leading-relaxed text-zinc-400">
+          완성된 콘텐츠는 복사해서 직접 게시하시면 돼요. CREVENA가 회원님의 SNS 계정에 대신 게시하지는 않아요.
         </p>
       </section>
 
@@ -193,12 +206,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-zinc-200 bg-zinc-50">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-6 text-xs text-zinc-400 sm:px-6">
-          <span className="font-semibold text-zinc-500">CREVENA</span>
-          <span>© {new Date().getFullYear()} CREVENA</span>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

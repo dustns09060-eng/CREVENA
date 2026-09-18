@@ -18,7 +18,6 @@ export type PlanConfig = {
   photoAnalysisEnabled: boolean;
   partialRegenerateEnabled: boolean;
   contentRetention: string;
-  snsAutomationScope: string;
   recommendedFor: string;
   highlights: string[];
 };
@@ -48,7 +47,6 @@ export const PLAN_CONFIGS: Record<PlanTier, PlanConfig> = {
     photoAnalysisEnabled: false,
     partialRegenerateEnabled: false,
     contentRetention: "무제한 보관 (개수 제한 있음)",
-    snsAutomationScope: "제공 예정 없음",
     recommendedFor: "가입 후 CREVENA를 처음 써보는 분",
     highlights: [
       "텍스트 콘텐츠 생성 (Instagram/네이버블로그/Threads)",
@@ -68,7 +66,6 @@ export const PLAN_CONFIGS: Record<PlanTier, PlanConfig> = {
     photoAnalysisEnabled: true,
     partialRegenerateEnabled: true,
     contentRetention: "무제한 보관",
-    snsAutomationScope: "추후 유료 애드온으로 제공 예정",
     recommendedFor: "가끔 협찬을 진행하는 라이트 유저",
     highlights: [
       "텍스트 콘텐츠 생성 + 사진 기반 블로그 작성",
@@ -88,12 +85,11 @@ export const PLAN_CONFIGS: Record<PlanTier, PlanConfig> = {
     photoAnalysisEnabled: true,
     partialRegenerateEnabled: true,
     contentRetention: "무제한 보관",
-    snsAutomationScope: "출시 시 우선 제공 예정",
     recommendedFor: "협찬이 잦고 블로그·인스타·Threads를 함께 운영하는 분",
     highlights: [
       "BASIC의 모든 기능 + 넉넉한 크레딧",
       "협찬·콘텐츠 저장 개수 무제한",
-      "향후 SNS 자동화 기능 우선 제공",
+      "분당 요청 한도가 가장 높아 사진이 많은 협찬도 한 번에 처리",
     ],
   },
 };

@@ -131,7 +131,17 @@ export default async function DashboardPage() {
         <Card className="p-4">
           <h2 className="text-sm font-semibold text-zinc-900">최근 협찬</h2>
           {recentCollaborations.length === 0 ? (
-            <p className="mt-3 text-sm text-zinc-500">등록된 협찬이 없습니다.</p>
+            <div className="mt-3">
+              <EmptyState
+                title="아직 등록된 협찬이 없어요"
+                description="협찬을 등록하면 가이드 분석부터 콘텐츠 제작까지 이어서 진행할 수 있어요."
+                action={
+                  <Link href="/collaborations/new">
+                    <Button size="sm">협찬 등록하기</Button>
+                  </Link>
+                }
+              />
+            </div>
           ) : (
             <ul className="mt-3 flex flex-col divide-y divide-zinc-100">
               {recentCollaborations.map((c) => (
@@ -154,7 +164,12 @@ export default async function DashboardPage() {
         <Card className="p-4">
           <h2 className="text-sm font-semibold text-zinc-900">다가오는 마감</h2>
           {upcomingDeadlines.length === 0 ? (
-            <p className="mt-3 text-sm text-zinc-500">다가오는 마감이 없습니다.</p>
+            <div className="mt-3">
+              <EmptyState
+                title="다가오는 마감이 없어요"
+                description="협찬에 업로드 마감일을 입력하면 여기에서 미리 확인할 수 있어요."
+              />
+            </div>
           ) : (
             <ul className="mt-3 flex flex-col divide-y divide-zinc-100">
               {upcomingDeadlines.map((c) => (

@@ -16,6 +16,17 @@ import type { Database } from "@/types/database";
 // rule below correctly gates it like any other authenticated page.
 const PUBLIC_PATHS = ["/login", "/", "/reset-password", "/find-id"];
 
+// STEP45: the policy/info pages. These differ from PUBLIC_PATHS above in one
+// important way — PUBLIC_PATHS are *logged-out* destinations, so an
+// authenticated visitor gets bounced off them to /dashboard (correct for
+// /login and the marketing landing page). The terms/privacy/refund pages must
+// stay readable by everyone, signed in or not: a paying user needs to be able
+// to open 환불정책 from the footer without being thrown to the dashboard.
+// So these are checked first and simply pass through, for any auth state.
+// This is routing configuration only — no change to how sessions or
+// authorization are evaluated.
+const OPEN_PATHS = ["/terms", "/privacy", "/refund-policy", "/contact"];
+
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -50,7 +61,9 @@ export async function updateSession(request: NextRequest) {
   // it must be reachable before a session exists.
   const isAuthCallbackPath = request.nextUrl.pathname.startsWith("/auth/");
 
-  if (isApiPath || isAuthCallbackPath) {
+  const isOpenPath = OPEN_PATHS.includes(request.nextUrl.pathname);
+
+  if (isApiPath || isAuthCallbackPath || isOpenPath) {
     return response;
   }
 
