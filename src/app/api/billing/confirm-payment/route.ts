@@ -151,7 +151,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "결제에 실패했습니다.";
-    return await markFailed(message, error instanceof Error ? { message: error.message } : error);
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    console.error("confirm-payment: charge failed", rawMessage);
+    return await markFailed("결제에 실패했습니다. 카드 정보를 확인한 뒤 다시 시도해주세요.", error instanceof Error ? { message: rawMessage } : error);
   }
 }

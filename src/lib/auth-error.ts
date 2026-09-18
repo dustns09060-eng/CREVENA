@@ -30,6 +30,22 @@ const KNOWN_AUTH_ERRORS: { match: (msg: string) => boolean; ko: string }[] = [
     ko: "링크가 만료되었거나 유효하지 않아요. 재설정 이메일을 다시 받아주세요.",
   },
   {
+    // STEP44: found via real testing — Supabase's resend/reset rate-limit
+    // message ("For security purposes, you can only request this after N
+    // seconds.") was reaching the user verbatim in English.
+    match: (m) => m.includes("you can only request this after"),
+    ko: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+  },
+  {
+    // STEP44: found via real testing — an empty email field somehow
+    // reaching signUp() surfaces this GoTrue message verbatim; the email
+    // input is already required+type=email, so this should be unreachable
+    // in normal use, but the fallback keeps it from ever showing raw
+    // English if it happens anyway.
+    match: (m) => m.includes("Anonymous sign-ins are disabled"),
+    ko: "이메일을 입력해주세요.",
+  },
+  {
     match: (m) => m.includes("New password should be different"),
     ko: "이전과 다른 비밀번호를 입력해주세요.",
   },
