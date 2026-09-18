@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LegalPage, LegalSection, LegalText, LegalList, OperatorTodo } from "@/components/layout/LegalPage";
+import { LegalPage, LegalSection, LegalText, LegalList } from "@/components/layout/LegalPage";
+import { SUPPORT_EMAIL, SUPPORT_EMAIL_HREF } from "@/lib/support";
 
 export const metadata: Metadata = {
   title: "문의하기",
@@ -8,22 +9,31 @@ export const metadata: Metadata = {
 };
 
 // STEP45: an information-only page — no contact form, no backend, no new
-// dependency. It deliberately does NOT print an email address: there is no
-// contact address established anywhere in this repository (verified by
-// grepping src/ and the env files), and inventing one would send real users'
-// refund and privacy requests into a void.
+// dependency.
+// STEP45.1: the contact channel is now confirmed, so the page prints the
+// real support address instead of the "[운영자 확인 필요] 이메일 미설정"
+// block. The address is shared from @/lib/support so /terms, /privacy,
+// /refund-policy and the footer can never drift apart from this page.
 export default function ContactPage() {
   return (
     <LegalPage
       title="문의하기"
       description="서비스 이용 중 궁금한 점이나 불편한 점이 있으면 알려주세요."
     >
-      <OperatorTodo>
-        <b>[운영자 확인 필요]</b> 고객 문의용 이메일 주소가 아직 설정되지 않았습니다. 저장소 어디에도 확정된 문의 채널이
-        없어 임의의 주소를 기재하지 않았습니다. 정식 오픈 전에 문의 이메일을 개설하고 이 페이지, 이용약관,
-        개인정보처리방침에 동일하게 반영해야 합니다. 환불 요청과 개인정보 열람·삭제·회원 탈퇴 요청이 모두 이 채널로
-        접수되므로, 오픈 전 반드시 준비되어야 하는 항목입니다.
-      </OperatorTodo>
+      <LegalSection heading="문의 이메일">
+        <LegalText>
+          아래 이메일로 문의해 주세요. 결제·환불 요청, 개인정보 열람·정정·삭제 요청, 회원탈퇴 관련 문의를 모두 이
+          주소로 접수합니다.
+        </LegalText>
+        <LegalText>
+          <a
+            href={SUPPORT_EMAIL_HREF}
+            className="font-medium text-brand-700 underline underline-offset-2"
+          >
+            {SUPPORT_EMAIL}
+          </a>
+        </LegalText>
+      </LegalSection>
 
       <LegalSection heading="먼저 확인해 보세요">
         <LegalText>
