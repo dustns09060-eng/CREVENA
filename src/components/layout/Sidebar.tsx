@@ -3,17 +3,28 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SignOutButton } from "./SignOutButton";
+import {
+  HomeIcon,
+  BriefcaseIcon,
+  LayersIcon,
+  ArchiveIcon,
+  CalendarIcon,
+  MessageCircleIcon,
+  BarChartIcon,
+  CreditCardIcon,
+  SettingsIcon,
+} from "@/components/ui/Icon";
 
 const MENU_ITEMS = [
-  { href: "/dashboard", label: "대시보드" },
-  { href: "/collaborations", label: "협찬관리" },
-  { href: "/content", label: "콘텐츠 제작" },
-  { href: "/content-library", label: "콘텐츠 보관함" },
-  { href: "/calendar", label: "캘린더" },
-  { href: "/comments-dm", label: "댓글 / DM" },
-  { href: "/stats", label: "통계" },
-  { href: "/pricing", label: "요금제" },
-  { href: "/settings", label: "설정" },
+  { href: "/dashboard", label: "대시보드", icon: HomeIcon },
+  { href: "/collaborations", label: "협찬관리", icon: BriefcaseIcon },
+  { href: "/content", label: "콘텐츠 제작", icon: LayersIcon },
+  { href: "/content-library", label: "콘텐츠 보관함", icon: ArchiveIcon },
+  { href: "/calendar", label: "캘린더", icon: CalendarIcon },
+  { href: "/comments-dm", label: "댓글 / DM", icon: MessageCircleIcon },
+  { href: "/stats", label: "통계", icon: BarChartIcon },
+  { href: "/pricing", label: "요금제", icon: CreditCardIcon },
+  { href: "/settings", label: "설정", icon: SettingsIcon },
 ] as const;
 
 export function Sidebar() {
@@ -21,23 +32,20 @@ export function Sidebar() {
 
   return (
     <nav className="flex h-full flex-col gap-1 p-3">
-      <div className="px-3 py-2 text-lg font-bold text-zinc-900 md:py-4">
-        CREVENA
-      </div>
-      <div className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
+      <div className="hidden px-3 py-4 text-lg font-bold text-zinc-900 md:block">CREVENA</div>
+      <div className="flex flex-col gap-0.5">
         {MENU_ITEMS.map((item) => {
-          const isActive =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-zinc-900 text-white"
-                  : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                isActive ? "bg-brand-50 text-brand-700" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
               }`}
             >
+              <Icon size={18} className={isActive ? "text-brand-600" : "text-zinc-400"} />
               {item.label}
             </Link>
           );

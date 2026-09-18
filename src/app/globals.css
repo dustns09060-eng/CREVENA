@@ -1,8 +1,28 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+ * STEP43: CREVENA Design System V1
+ *
+ * A single set of semantic tokens (background/surface/text/border/brand/
+ * status) instead of every screen picking its own zinc-900/emerald-600/etc
+ * inline. Existing screens already leaned heavily on Tailwind's zinc scale
+ * for neutrals — that part was fine and is kept as-is (zinc utilities still
+ * work everywhere); what was missing was a real Primary brand color and a
+ * documented scale, so this file adds a `brand` color ramp via Tailwind v4's
+ * `@theme` (auto-generates bg-brand-*, text-brand-*, border-brand-* utilities)
+ * plus a few semantic CSS variables for the handful of places that need a
+ * value rather than a utility class (e.g. focus rings).
+ *
+ * No dark mode is introduced here (STEP43 item 53) — the previous
+ * prefers-color-scheme block is removed because it silently flipped the
+ * background/foreground vars on an OS in dark mode with zero matching
+ * component styling anywhere in the app, which read as a broken half-dark
+ * page, not a supported theme. Light-only, pinned, is the correct fix.
+ * --------------------------------------------------------------------------- */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafafa;
+  --foreground: #18181b;
 }
 
 @theme inline {
@@ -10,17 +30,33 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Brand (Primary) — a muted indigo. Reads as premium/creative SaaS
+     without the coldness of a corporate blue or the softness of a pastel
+     "parenting app" palette. Used for primary CTAs, active nav state, and
+     focus rings; everything else stays neutral zinc so the brand color
+     never competes with the user's own photos/content. */
+  --color-brand-50: #f0f0ff;
+  --color-brand-100: #e4e3fe;
+  --color-brand-200: #cbc9fd;
+  --color-brand-300: #a7a3fa;
+  --color-brand-400: #8078f5;
+  --color-brand-500: #6355ee;
+  --color-brand-600: #5138e0;
+  --color-brand-700: #442dc4;
+  --color-brand-800: #38279e;
+  --color-brand-900: #31257c;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Korean-first system font stack — Apple SD Gothic Neo / Malgun Gothic
+     render Hangul far better than any Latin webfont's CJK fallback would,
+     and this adds zero bytes/requests over the previous (broken) Arial
+     override, which never actually reached the Geist variable it sat next
+     to. Latin text still benefits from -apple-system/Segoe UI. */
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", Roboto,
+    var(--font-sans), sans-serif;
 }
