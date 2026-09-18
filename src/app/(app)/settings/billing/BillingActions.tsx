@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { PlanTier } from "@/lib/plans";
+import { Button } from "@/components/ui/Button";
 
 async function postJson(url: string, body?: unknown) {
   const res = await fetch(url, {
@@ -52,31 +53,33 @@ export function BillingActions({
     <div className="mt-4 flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
         {!hasScheduledChange && (
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={pending}
             onClick={() => run(() => postJson("/api/billing/cancel-subscription"))}
-            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
           >
             구독 취소
-          </button>
+          </Button>
         )}
         {!hasScheduledChange && planTier === "PRO" && (
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={pending}
             onClick={() => run(() => postJson("/api/billing/schedule-downgrade", { targetPlan: "BASIC" }))}
-            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
           >
             다음 결제부터 BASIC으로 변경
-          </button>
+          </Button>
         )}
         {hasScheduledChange && (
-          <button
+          <Button
+            size="sm"
             disabled={pending}
             onClick={() => run(() => postJson("/api/billing/cancel-scheduled-change"))}
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
           >
             예약 철회
-          </button>
+          </Button>
         )}
       </div>
       {message && <p className="text-xs text-red-600">{message}</p>}

@@ -22,7 +22,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                  className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:bg-brand-50 hover:text-brand-700"
                 >
                   {item.label}
                 </Link>
@@ -37,7 +37,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl p-4 md:p-8">{children}</main>
+      <main className="mx-auto flex max-w-6xl flex-col p-4 md:p-8">{children}</main>
     </div>
   );
 }

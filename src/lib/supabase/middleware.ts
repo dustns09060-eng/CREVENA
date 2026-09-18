@@ -8,7 +8,13 @@ import type { Database } from "@/types/database";
 // /login — this is not new authorization logic, just widening which paths
 // don't require a session, and the existing `user && isPublicPath` rule
 // below still sends an already-logged-in visitor straight to /dashboard.
-const PUBLIC_PATHS = ["/login", "/"];
+// STEP43-1: /reset-password (request a recovery email) and /find-id (static,
+// no-lookup guidance page) must be reachable by logged-out visitors, same
+// reasoning as /login. /update-password is intentionally NOT public — it
+// requires the session that Supabase's recovery-link code exchange creates
+// (see /auth/callback/route.ts), so the existing `!user && !isPublicPath`
+// rule below correctly gates it like any other authenticated page.
+const PUBLIC_PATHS = ["/login", "/", "/reset-password", "/find-id"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

@@ -10,6 +10,11 @@ import { formatDDay } from "@/lib/dday";
 import { GuideForm } from "./GuideForm";
 import { StatusControl } from "./StatusControl";
 import { StatusStepper } from "./StatusStepper";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { CheckIcon, ChevronLeftIcon } from "@/components/ui/Icon";
 
 const TABS = [
   { key: "info", label: "기본정보" },
@@ -78,18 +83,22 @@ export default async function CollaborationDetailPage({
   const blogPublished = blogContent?.status === "POSTED";
 
   return (
-    <div>
-      <Link href="/collaborations" className="text-sm text-zinc-500 hover:text-zinc-900">
-        ← 협찬관리
+    <div className="mx-auto flex w-full max-w-6xl flex-col">
+      <Link
+        href="/collaborations"
+        className="inline-flex w-fit items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900"
+      >
+        <ChevronLeftIcon size={16} />
+        협찬관리
       </Link>
 
-      <div className="mt-2 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-zinc-900">
-          {collaboration.brand_name} · {collaboration.product_name}
-        </h1>
-        <span className="rounded-full bg-zinc-900 px-3 py-1 text-sm font-medium text-white">
-          {formatDDay(collaboration.content_deadline)}
-        </span>
+      <div className="mt-2">
+        <PageHeader
+          title={`${collaboration.brand_name} · ${collaboration.product_name}`}
+          action={
+            <Badge tone="brand">{formatDDay(collaboration.content_deadline)}</Badge>
+          }
+        />
       </div>
 
       <div className="mt-4">
@@ -100,15 +109,15 @@ export default async function CollaborationDetailPage({
         <StatusControl collaborationId={id} currentStatus={collaboration.status} />
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-1 border-b border-zinc-200">
+      <div className="mt-6 flex flex-wrap gap-1 overflow-x-auto border-b border-zinc-200">
         {TABS.map((t) => (
           <Link
             key={t.key}
             href={`/collaborations/${id}?tab=${t.key}`}
-            className={`rounded-t-lg px-4 py-2 text-sm font-medium ${
+            className={`shrink-0 rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors ${
               tab === t.key
-                ? "border-b-2 border-zinc-900 text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-900"
+                ? "border-b-2 border-brand-600 text-brand-700"
+                : "border-b-2 border-transparent text-zinc-500 hover:text-zinc-900"
             }`}
           >
             {t.label}
@@ -116,7 +125,7 @@ export default async function CollaborationDetailPage({
         ))}
       </div>
 
-      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-6">
+      <Card className="mt-6">
         {tab === "info" && (
           <div className="flex flex-col">
             <InfoRow label="브랜드명" value={collaboration.brand_name} />
@@ -193,7 +202,10 @@ export default async function CollaborationDetailPage({
             </p>
             {blogPublished && (
               <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                <span>✓ 네이버 블로그 발행 완료</span>
+                <span className="inline-flex items-center gap-1">
+                  <CheckIcon size={14} />
+                  네이버 블로그 발행 완료
+                </span>
                 {blogPublishedUrl && (
                   <a
                     href={blogPublishedUrl}
@@ -206,11 +218,8 @@ export default async function CollaborationDetailPage({
                 )}
               </div>
             )}
-            <Link
-              href={`/collaborations/${id}/content`}
-              className="mt-3 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-            >
-              콘텐츠 제작실 열기
+            <Link href={`/collaborations/${id}/content`} className="mt-3 inline-block">
+              <Button>콘텐츠 제작실 열기</Button>
             </Link>
           </div>
         )}
@@ -251,7 +260,7 @@ export default async function CollaborationDetailPage({
             {collaboration.memo || "메모가 없습니다."}
           </p>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

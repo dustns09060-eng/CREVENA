@@ -729,8 +729,32 @@ export function StudioTabs({
   const carouselSourceMeta = localCarousel?.generationInput?.sourceMeta;
   const reelsSourceMeta = localReels?.generationInput?.sourceMeta;
 
+  const photoCount = photoManager.photos.length;
+  const analyzedPhotoCount = photoCount - unanalyzedPhotoCount;
+
   return (
     <div className="flex flex-col gap-6">
+      {/* STEP43-1: workspace header — real brand/product + real guide/photo
+          readiness (no fabricated states), so Content Studio reads as one
+          workspace instead of a bare tab page. */}
+      <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div>
+          <p className="text-xs font-medium text-zinc-400">콘텐츠 제작실</p>
+          <p className="mt-0.5 text-base font-semibold text-zinc-900">
+            {photoBlogInfo.brandName} · {photoBlogInfo.productName}
+          </p>
+          {photoBlogInfo.campaignName && <p className="text-xs text-zinc-500">{photoBlogInfo.campaignName}</p>}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <Badge tone={guideAnalysis ? (guideStale ? "warning" : "success") : "neutral"}>
+            {guideAnalysis ? (guideStale ? "가이드 △ 재분석 필요" : "가이드 ✓ 분석 완료") : "가이드 미분석"}
+          </Badge>
+          <Badge tone={photoCount === 0 ? "neutral" : analyzedPhotoCount === photoCount ? "success" : "warning"}>
+            {photoCount === 0 ? "사진 없음" : `사진 ${photoCount}장 · 분석 ${analyzedPhotoCount}/${photoCount}`}
+          </Badge>
+        </div>
+      </div>
+
       {/* ① 업체 가이드 */}
       <section className="rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">
         <SectionHeader

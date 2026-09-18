@@ -4,6 +4,9 @@ import { requireAdmin } from "@/lib/admin/guard";
 import { getAiLimitsForPlan } from "@/lib/ai/plan-limits";
 import { RefundButton } from "./RefundButton";
 import type { AdminUserDetail } from "@/types/database";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 
 const FEATURE_LABELS: Record<string, string> = {
   TEXT_GENERATION: "텍스트 생성",
@@ -67,33 +70,21 @@ export default async function AdminUserDetailPage({
       <Link href="/admin/users" className="text-sm text-zinc-500 hover:text-zinc-900">
         ← 사용자 목록
       </Link>
-      <h1 className="mt-2 text-2xl font-bold text-zinc-900">{detail.email}</h1>
+
+      <div className="mt-2">
+        <PageHeader title={detail.email} />
+      </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <Card>
           <h2 className="text-sm font-semibold text-zinc-900">기본 정보</h2>
           <div className="mt-3 flex flex-col">
             <InfoRow label="이메일" value={detail.email} />
             <InfoRow label="표시 이름" value={detail.display_name} />
-            <InfoRow
-              label="플랜"
-              value={
-                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-                  {detail.plan_tier}
-                </span>
-              }
-            />
+            <InfoRow label="플랜" value={<Badge>{detail.plan_tier}</Badge>} />
             <InfoRow
               label="권한"
-              value={
-                detail.role === "ADMIN" ? (
-                  <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
-                    ADMIN
-                  </span>
-                ) : (
-                  "USER"
-                )
-              }
+              value={detail.role === "ADMIN" ? <Badge tone="brand">ADMIN</Badge> : "USER"}
             />
             <InfoRow label="가입일" value={new Date(detail.created_at).toLocaleString("ko-KR")} />
             <InfoRow
@@ -101,9 +92,9 @@ export default async function AdminUserDetailPage({
               value={detail.last_sign_in_at ? new Date(detail.last_sign_in_at).toLocaleString("ko-KR") : "기록 없음"}
             />
           </div>
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <Card>
           <h2 className="text-sm font-semibold text-zinc-900">구독 상태</h2>
           <div className="mt-3 flex flex-col">
             <InfoRow
@@ -144,9 +135,9 @@ export default async function AdminUserDetailPage({
               }
             />
           </div>
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <Card>
           <h2 className="text-sm font-semibold text-zinc-900">최근 결제 내역 (최대 10건)</h2>
           <div className="mt-3 flex flex-col">
             {detail.recent_payments.length === 0 ? (
@@ -164,11 +155,11 @@ export default async function AdminUserDetailPage({
                     <span className="text-zinc-600">{p.kind === "RECURRING" ? "정기결제" : "최초결제"} · {p.plan}</span>
                     <span className="text-zinc-900">₩{p.amount.toLocaleString()}</span>
                     {p.status === "PAID" ? (
-                      <span className="text-emerald-600">성공</span>
+                      <Badge tone="success">성공</Badge>
                     ) : p.status === "FAILED" ? (
-                      <span className="text-red-600">실패{p.error_type ? ` (${p.error_type})` : ""}</span>
+                      <Badge tone="danger">실패{p.error_type ? ` (${p.error_type})` : ""}</Badge>
                     ) : (
-                      <span className="text-amber-600">처리중</span>
+                      <Badge tone="warning">처리중</Badge>
                     )}
                     {p.status === "PAID" && <RefundButton paymentEventId={p.id} remaining={remaining} />}
                   </div>
@@ -176,9 +167,9 @@ export default async function AdminUserDetailPage({
               })
             )}
           </div>
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <Card>
           <h2 className="text-sm font-semibold text-zinc-900">이번 달 AI 사용량</h2>
           <div className="mt-3 flex flex-col">
             <InfoRow
@@ -202,11 +193,11 @@ export default async function AdminUserDetailPage({
               }
             />
           </div>
-        </div>
+        </Card>
       </div>
 
       {detail.recent_refunds.length > 0 && (
-        <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-4">
+        <Card className="mt-6">
           <h2 className="text-sm font-semibold text-zinc-900">환불 내역 (최대 10건)</h2>
           <div className="mt-3 flex flex-col">
             {detail.recent_refunds.map((r) => (
@@ -215,70 +206,70 @@ export default async function AdminUserDetailPage({
                 <span className="text-zinc-900">₩{r.refund_amount.toLocaleString()}</span>
                 <span className="text-zinc-600">{r.reason || "-"}</span>
                 {r.status === "SUCCEEDED" ? (
-                  <span className="text-emerald-600">완료</span>
+                  <Badge tone="success">완료</Badge>
                 ) : r.status === "FAILED" ? (
-                  <span className="text-red-600">실패</span>
+                  <Badge tone="danger">실패</Badge>
                 ) : (
-                  <span className="text-amber-600">처리중</span>
+                  <Badge tone="warning">처리중</Badge>
                 )}
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
-      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-zinc-900">최근 AI 호출 (최대 30건)</h2>
-        <p className="mt-1 text-xs text-zinc-500">
+      <Card className="mt-6 p-0">
+        <h2 className="px-4 pt-4 text-sm font-semibold text-zinc-900 sm:px-5 sm:pt-5">최근 AI 호출 (최대 30건)</h2>
+        <p className="px-4 pt-1 text-xs text-zinc-500 sm:px-5">
           운영 메타데이터만 표시합니다. 실제 협찬 본문·메모·사진 내용은 표시하지 않습니다.
         </p>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm whitespace-nowrap">
             <thead className="border-b border-zinc-200 text-zinc-500">
               <tr>
-                <th className="px-3 py-2 font-medium">시각</th>
-                <th className="px-3 py-2 font-medium">기능</th>
-                <th className="px-3 py-2 font-medium">작업</th>
-                <th className="px-3 py-2 font-medium">상태</th>
-                <th className="px-3 py-2 font-medium">모델</th>
-                <th className="px-3 py-2 font-medium">입력 토큰</th>
-                <th className="px-3 py-2 font-medium">출력 토큰</th>
-                <th className="px-3 py-2 font-medium">크레딧</th>
+                <th className="px-4 py-3 font-medium">시각</th>
+                <th className="px-4 py-3 font-medium">기능</th>
+                <th className="px-4 py-3 font-medium">작업</th>
+                <th className="px-4 py-3 font-medium">상태</th>
+                <th className="px-4 py-3 font-medium">모델</th>
+                <th className="px-4 py-3 font-medium">입력 토큰</th>
+                <th className="px-4 py-3 font-medium">출력 토큰</th>
+                <th className="px-4 py-3 font-medium">크레딧</th>
               </tr>
             </thead>
             <tbody>
               {detail.recent_logs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-4 text-center text-zinc-400">
+                  <td colSpan={8} className="px-4 py-4 text-center text-zinc-400">
                     호출 기록이 없습니다.
                   </td>
                 </tr>
               ) : (
                 detail.recent_logs.map((log) => (
                   <tr key={log.id} className="border-b border-zinc-100 last:border-0">
-                    <td className="px-3 py-2 text-zinc-500">{new Date(log.created_at).toLocaleString("ko-KR")}</td>
-                    <td className="px-3 py-2">{FEATURE_LABELS[log.feature] ?? log.feature}</td>
-                    <td className="px-3 py-2 text-zinc-600">
+                    <td className="px-4 py-3 text-zinc-500">{new Date(log.created_at).toLocaleString("ko-KR")}</td>
+                    <td className="px-4 py-3">{FEATURE_LABELS[log.feature] ?? log.feature}</td>
+                    <td className="px-4 py-3 text-zinc-600">
                       {log.operation ? OPERATION_LABELS[log.operation] ?? log.operation : "-"}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-4 py-3">
                       {log.status === "success" ? (
-                        <span className="text-emerald-600">성공</span>
+                        <Badge tone="success">성공</Badge>
                       ) : (
-                        <span className="text-red-600">실패{log.error_type ? ` (${log.error_type})` : ""}</span>
+                        <Badge tone="danger">실패{log.error_type ? ` (${log.error_type})` : ""}</Badge>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-zinc-500">{log.model ?? "-"}</td>
-                    <td className="px-3 py-2 text-zinc-500">{log.input_tokens ?? "-"}</td>
-                    <td className="px-3 py-2 text-zinc-500">{log.output_tokens ?? "-"}</td>
-                    <td className="px-3 py-2 text-zinc-500">{log.credits_used ?? "-"}</td>
+                    <td className="px-4 py-3 text-zinc-500">{log.model ?? "-"}</td>
+                    <td className="px-4 py-3 text-zinc-500">{log.input_tokens ?? "-"}</td>
+                    <td className="px-4 py-3 text-zinc-500">{log.output_tokens ?? "-"}</td>
+                    <td className="px-4 py-3 text-zinc-500">{log.credits_used ?? "-"}</td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

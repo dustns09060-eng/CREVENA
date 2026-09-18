@@ -25,6 +25,18 @@ const KNOWN_AUTH_ERRORS: { match: (msg: string) => boolean; ko: string }[] = [
     match: (m) => m.includes("rate limit"),
     ko: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
   },
+  {
+    match: (m) => m.includes("Email link is invalid or has expired") || m.includes("Token has expired"),
+    ko: "링크가 만료되었거나 유효하지 않아요. 재설정 이메일을 다시 받아주세요.",
+  },
+  {
+    match: (m) => m.includes("New password should be different"),
+    ko: "이전과 다른 비밀번호를 입력해주세요.",
+  },
+  {
+    match: (m) => m.includes("Auth session missing"),
+    ko: "인증 세션이 만료되었어요. 재설정 이메일을 다시 받아주세요.",
+  },
 ];
 
 export function translateAuthError(message: string): string {

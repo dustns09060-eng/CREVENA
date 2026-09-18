@@ -31,6 +31,20 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(() => (hasConfirmError() ? CONFIRM_ERROR_MESSAGE : null));
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [signedUpEmail, setSignedUpEmail] = useState<string | null>(null);
+
+  async function handleResend() {
+    if (!signedUpEmail) return;
+    setResending(true);
+    const { error } = await supabase.auth.resend({ type: "signup", email: signedUpEmail });
+    setResending(false);
+    setNotice(
+      error
+        ? translateAuthError(error.message)
+        : "인증 메일을 다시 보냈어요. 받은편지함(스팸함 포함)을 확인해주세요.",
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,6 +72,7 @@ function LoginForm() {
         setError(translateAuthError(error.message));
         return;
       }
+      setSignedUpEmail(email);
       setNotice(
         "가입 완료! 입력하신 이메일로 인증 메일을 보냈습니다. 받은편지함(스팸함 포함)에서 링크를 클릭한 뒤 로그인해주세요.",
       );
@@ -98,9 +113,32 @@ function LoginForm() {
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         {notice && <p className="mt-3 text-sm text-emerald-600">{notice}</p>}
 
+        {mode === "signup" && signedUpEmail && (
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={resending}
+            className="mt-2 text-xs text-zinc-500 hover:text-zinc-900 disabled:opacity-50"
+          >
+            {resending ? "다시 보내는 중..." : "인증 이메일 다시 보내기"}
+          </button>
+        )}
+
         <Button type="submit" size="lg" loading={loading} loadingText="처리중..." className="mt-4 w-full">
           {mode === "signin" ? "로그인" : "가입하기"}
         </Button>
+
+        {mode === "signin" && (
+          <div className="mt-3 flex items-center justify-center gap-3 text-xs text-zinc-500">
+            <Link href="/find-id" className="hover:text-zinc-900">
+              아이디 찾기
+            </Link>
+            <span className="text-zinc-300">|</span>
+            <Link href="/reset-password" className="hover:text-zinc-900">
+              비밀번호 찾기
+            </Link>
+          </div>
+        )}
 
         <button
           type="button"
@@ -108,6 +146,7 @@ function LoginForm() {
             setMode(mode === "signin" ? "signup" : "signin");
             setError(null);
             setNotice(null);
+            setSignedUpEmail(null);
           }}
           className="mt-3 min-h-[44px] w-full text-center text-sm text-zinc-500 hover:text-zinc-900"
         >

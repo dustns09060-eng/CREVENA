@@ -259,7 +259,7 @@ export function NaverPublishAssistant({
             href="https://blog.naver.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
+            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
           >
             네이버 블로그 글쓰기 열기
           </a>
@@ -270,14 +270,14 @@ export function NaverPublishAssistant({
           <button
             type="button"
             onClick={() => setMode("list")}
-            className={`rounded-full px-3 py-1 font-medium ${mode === "list" ? "bg-zinc-900 text-white" : "text-zinc-500"}`}
+            className={`rounded-full px-3 py-1 font-medium ${mode === "list" ? "bg-brand-600 text-white" : "text-zinc-500"}`}
           >
             목록 모드
           </button>
           <button
             type="button"
             onClick={() => setMode("focus")}
-            className={`rounded-full px-3 py-1 font-medium ${mode === "focus" ? "bg-zinc-900 text-white" : "text-zinc-500"}`}
+            className={`rounded-full px-3 py-1 font-medium ${mode === "focus" ? "bg-brand-600 text-white" : "text-zinc-500"}`}
           >
             집중 모드 (이전/다음)
           </button>
@@ -332,7 +332,7 @@ export function NaverPublishAssistant({
                   if (!completedIds.has(step.id)) toggleStep(step.id);
                   setFocusIndex((i) => Math.min(steps.length - 1, i + 1));
                 }}
-                className="flex-1 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
+                className="flex-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
               >
                 ✓ 완료하고 다음
               </button>

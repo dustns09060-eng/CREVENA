@@ -3,39 +3,55 @@
 import { useActionState } from "react";
 import { createCollaboration, type CreateCollaborationState } from "./actions";
 import { UPLOAD_PLATFORM_LABELS, UPLOAD_PLATFORMS } from "@/lib/upload-platforms";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 
 const initialState: CreateCollaborationState = null;
 
 function Field({
   label,
+  required,
   children,
 }: {
   label: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="font-medium text-zinc-700">{label}</span>
+      <span className="flex items-center gap-1.5 font-medium text-zinc-700">
+        {label}
+        {required ? (
+          <Badge tone="brand">필수</Badge>
+        ) : (
+          <Badge tone="neutral">선택</Badge>
+        )}
+      </span>
       {children}
     </label>
   );
 }
 
 const inputClass =
-  "rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900";
+  "w-full min-w-0 rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900";
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-sm font-semibold text-zinc-900">{children}</h2>;
+}
 
 export function CollaborationForm() {
   const [state, formAction, pending] = useActionState(createCollaboration, initialState);
 
   return (
-    <form action={formAction} className="mt-6 flex max-w-2xl flex-col gap-8">
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-zinc-900">기본 정보</h2>
+    <form action={formAction} className="mt-6 flex w-full flex-col gap-5">
+      <Card className="flex flex-col gap-4">
+        <SectionTitle>기본 정보</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="브랜드명 *">
+          <Field label="브랜드명" required>
             <input name="brand_name" required className={inputClass} />
           </Field>
-          <Field label="제품명 *">
+          <Field label="제품명" required>
             <input name="product_name" required className={inputClass} />
           </Field>
           <Field label="캠페인명">
@@ -54,10 +70,10 @@ export function CollaborationForm() {
             <input name="manager_contact" className={inputClass} />
           </Field>
         </div>
-      </section>
+      </Card>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-zinc-900">제공 및 일정</h2>
+      <Card className="flex flex-col gap-4">
+        <SectionTitle>제공 및 일정</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="제공 방식">
             <select name="provision_type" defaultValue="" className={inputClass}>
@@ -67,7 +83,7 @@ export function CollaborationForm() {
               <option value="PRODUCT_AND_FEE">제품 + 원고료</option>
             </select>
           </Field>
-          <div />
+          <div className="hidden sm:block" />
           <Field label="제품 가격">
             <input name="product_price" type="number" min={0} step="1" className={inputClass} />
           </Field>
@@ -84,10 +100,10 @@ export function CollaborationForm() {
             <input name="payment_due_date" type="date" className={inputClass} />
           </Field>
         </div>
-      </section>
+      </Card>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-zinc-900">업로드 플랫폼</h2>
+      <Card className="flex flex-col gap-4">
+        <SectionTitle>업로드 플랫폼</SectionTitle>
         <div className="flex flex-wrap gap-4">
           {UPLOAD_PLATFORMS.map((p) => (
             <label key={p} className="flex items-center gap-2 text-sm text-zinc-700">
@@ -96,10 +112,10 @@ export function CollaborationForm() {
             </label>
           ))}
         </div>
-      </section>
+      </Card>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-zinc-900">가이드</h2>
+      <Card className="flex flex-col gap-4">
+        <SectionTitle>가이드</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="필수 키워드">
             <input name="required_keywords" className={inputClass} />
@@ -126,17 +142,13 @@ export function CollaborationForm() {
         <Field label="추가 메모">
           <textarea name="memo" rows={3} className={inputClass} />
         </Field>
-      </section>
+      </Card>
 
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-fit rounded-lg bg-zinc-900 px-5 py-2 text-sm font-medium text-white disabled:opacity-50"
-      >
-        {pending ? "저장중..." : "협찬 등록"}
-      </button>
+      <Button type="submit" size="lg" loading={pending} loadingText="저장중..." className="w-full sm:w-fit">
+        협찬 등록
+      </Button>
     </form>
   );
 }

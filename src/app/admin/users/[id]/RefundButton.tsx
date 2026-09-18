@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 
 export function RefundButton({ paymentEventId, remaining }: { paymentEventId: string; remaining: number }) {
   const router = useRouter();
@@ -74,20 +75,19 @@ export function RefundButton({ paymentEventId, remaining }: { paymentEventId: st
         className="rounded border border-zinc-300 px-2 py-1 text-xs"
       />
       <div className="flex gap-1">
-        <button
+        <Button
+          variant="danger"
+          size="sm"
           disabled={pending || amount <= 0 || amount > remaining}
+          loading={pending}
+          loadingText="처리 중..."
           onClick={submit}
-          className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
         >
-          {pending ? "처리 중..." : "환불 실행"}
-        </button>
-        <button
-          disabled={pending}
-          onClick={() => setOpen(false)}
-          className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600"
-        >
+          환불 실행
+        </Button>
+        <Button variant="secondary" size="sm" disabled={pending} onClick={() => setOpen(false)}>
           취소
-        </button>
+        </Button>
       </div>
       {message && <p className="text-xs text-red-600">{message}</p>}
     </div>
