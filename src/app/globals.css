@@ -59,4 +59,15 @@ body {
   font-family:
     -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", Roboto,
     var(--font-sans), sans-serif;
+
+  /* STEP45: Korean line-breaking. Browsers treat Hangul as breakable at any
+     syllable, so a heading like "협찬 가이드와 사진만 넣으세요." would wrap as
+     "넣으세 / 요" — it reads as broken text, and it showed up on the landing
+     hero at desktop width. `keep-all` breaks only at spaces, which is the
+     correct rule for Korean.
+     `overflow-wrap: break-word` is the necessary counterpart: with keep-all
+     alone, a long unbroken string (a pasted URL, a long hashtag run) would
+     refuse to wrap at all and push the page into horizontal overflow. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }

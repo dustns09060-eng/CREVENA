@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { isValidNaverBlogUrl } from "@/lib/naver-url";
+import { Button } from "@/components/ui/Button";
 import { GuideCheckList, type GuideCheckItem } from "../content/studio-ui";
 import type { BlogMeta } from "./actions";
 import type { PhotoWithUrl } from "./usePhotoManager";
@@ -254,16 +255,25 @@ export function NaverPublishAssistant({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* STEP45 copy fix: the label used to read "네이버 블로그 글쓰기 열기",
+            but this href is the Naver blog *home*, not the editor — and a
+            brand-colored button promising "글쓰기" reads as though CREVENA
+            opens/fills the editor for you. It only opens a new tab; the user
+            writes the post themselves. The instruction is also no longer
+            11px grey, since it's the step that actually explains the flow. */}
+        <div className="flex flex-col gap-1.5">
           <a
             href="https://blog.naver.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+            className="w-fit rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
           >
-            네이버 블로그 글쓰기 열기
+            네이버 블로그 열기
           </a>
-          <span className="text-[11px] text-zinc-400">네이버 로그인 후 &quot;글쓰기&quot;를 눌러주세요.</span>
+          <span className="text-xs text-zinc-500">
+            새 탭에서 네이버에 로그인한 뒤 &quot;글쓰기&quot;를 눌러주세요. 아래 단계에서 복사한 내용을 붙여넣으면
+            됩니다.
+          </span>
         </div>
 
         <div className="flex items-center gap-1 self-start rounded-full border border-zinc-200 p-0.5 text-xs">
@@ -349,7 +359,7 @@ export function NaverPublishAssistant({
         )}
 
         <div className="mt-2 flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-          <p className="text-xs font-semibold text-zinc-500">발행 완료</p>
+          <p className="text-xs font-semibold text-zinc-500">발행 완료 기록</p>
           {published ? (
             <div className="flex flex-col gap-1 text-xs text-emerald-700">
               <span>✓ 네이버 블로그 발행 완료</span>
@@ -370,7 +380,9 @@ export function NaverPublishAssistant({
               )}
             </div>
           ) : (
-            <p className="text-[11px] text-zinc-400">네이버에서 실제 발행을 마친 뒤 URL을 붙여넣어 주세요.</p>
+            <p className="text-xs text-zinc-500">
+              CREVENA는 대신 발행하지 않아요. 네이버에서 직접 발행을 마친 뒤, 그 글의 URL을 붙여넣어 기록해 주세요.
+            </p>
           )}
           <input
             value={urlInput}
@@ -382,15 +394,24 @@ export function NaverPublishAssistant({
             className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
           />
           {urlError && <p className="text-xs text-red-600">{urlError}</p>}
-          {!isSaved && <p className="text-xs text-amber-700">먼저 블로그를 저장한 뒤 발행 완료 처리를 할 수 있습니다.</p>}
-          <button
+          {!isSaved && (
+            <p className="text-xs text-amber-700">먼저 블로그를 저장한 뒤 발행 완료로 표시할 수 있습니다.</p>
+          )}
+          {/* STEP45: was a hand-rolled emerald-600 button — the only
+              off-brand primary CTA left in the app, and a green button
+              labelled "발행 완료" next to a URL field reads as "publish it
+              now". It only records a URL the user already published, so the
+              label now says so and it uses the shared primary Button. */}
+          <Button
             type="button"
             onClick={handleMarkPublished}
             disabled={publishing || !isSaved}
-            className="self-start rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+            loading={publishing}
+            loadingText="저장 중..."
+            className="self-start"
           >
-            {publishing ? "저장 중..." : "발행 완료"}
-          </button>
+            발행 완료로 표시
+          </Button>
         </div>
       </div>
     </div>

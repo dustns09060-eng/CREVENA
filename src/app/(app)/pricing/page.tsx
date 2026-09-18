@@ -108,10 +108,6 @@ export default async function PricingPage() {
                   <span className="text-zinc-600">콘텐츠 보관</span>
                   <span className="text-zinc-900">{plan.contentRetention}</span>
                 </div>
-                <div className="flex items-center justify-between py-1.5 text-sm">
-                  <span className="text-zinc-600">SNS 자동화(예정)</span>
-                  <span className="text-zinc-900">{plan.snsAutomationScope}</span>
-                </div>
               </div>
 
               <div className="mt-5">
@@ -131,6 +127,19 @@ export default async function PricingPage() {
           );
         })}
       </div>
+
+      {/* STEP45: "SNS 자동화(예정)" used to be a row inside each plan's
+          feature comparison list, with a per-plan value ("출시 시 우선 제공
+          예정" on PRO). Listing an unbuilt capability alongside real,
+          delivered limits implies it is part of what's being purchased —
+          the only place the product sold something it cannot do. There is no
+          SNS publishing code anywhere in the app, so it is stated plainly
+          here instead, outside the purchased-feature list and with no
+          per-plan promise attached. */}
+      <p className="mt-6 text-xs leading-relaxed text-zinc-500">
+        CREVENA는 콘텐츠를 만들어 두는 도구입니다. Instagram·Threads·네이버 블로그 등 외부 채널에 자동으로 게시하는 기능은
+        제공하지 않으며, 완성된 콘텐츠를 복사해 직접 게시하시면 됩니다.
+      </p>
     </div>
   );
 }
