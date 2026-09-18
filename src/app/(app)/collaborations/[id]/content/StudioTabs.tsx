@@ -793,6 +793,7 @@ export function StudioTabs({
         manager={photoManager}
         requiredPhotoCount={photoBlogInfo.requiredPhotoCount}
         minimumPhotos={guideAnalysis?.minimumPhotos}
+        collaborationId={collaborationId}
       />
 
       {/* ③ 내 경험 추가하기 (선택) */}

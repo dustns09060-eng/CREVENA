@@ -306,6 +306,10 @@ export type Database = {
           user_memo: string | null;
           body_section: string | null;
           body_edited: boolean;
+          edited_storage_path: string | null;
+          edited_thumbnail_path: string | null;
+          edit_preset_name: string | null;
+          edit_intensity: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -322,10 +326,36 @@ export type Database = {
           user_memo?: string | null;
           body_section?: string | null;
           body_edited?: boolean;
+          edited_storage_path?: string | null;
+          edited_thumbnail_path?: string | null;
+          edit_preset_name?: string | null;
+          edit_intensity?: number | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["collaboration_photos"]["Insert"]>;
+        Relationships: [];
+      };
+      photo_presets: {
+        Row: {
+          id: string;
+          user_id: string;
+          preset_name: string;
+          source_filename: string | null;
+          settings: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          preset_name: string;
+          source_filename?: string | null;
+          settings: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["photo_presets"]["Insert"]>;
         Relationships: [];
       };
       collaboration_videos: {

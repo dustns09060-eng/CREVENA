@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { SectionHeader, PhotoUploadEmptyState } from "./studio-ui";
 import { PHOTO_TYPE_LABELS } from "@/lib/photo-type";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
-import type { PhotoManager } from "../photos/usePhotoManager";
+import { Badge } from "@/components/ui/Badge";
+import { PhotoEditor } from "../photos/PhotoEditor";
+import type { PhotoManager, PhotoWithUrl } from "../photos/usePhotoManager";
 
 // STEP35.5 item 4/22: 사진 준비 rendered once at the top of the studio
 // (step 2), shared by all platforms — not nested inside the 블로그 tab
@@ -13,13 +16,16 @@ export function PhotoSection({
   manager,
   requiredPhotoCount,
   minimumPhotos,
+  collaborationId,
 }: {
   manager: PhotoManager;
   requiredPhotoCount: number | null;
   // STEP36 item 9: the guide's structured minimum photo count (when known),
   // passed through so exclude-suggestion never drops usable photos below it.
   minimumPhotos?: number | null;
+  collaborationId: string;
 }) {
+  const [editingPhoto, setEditingPhoto] = useState<PhotoWithUrl | null>(null);
   const {
     photos,
     fileInputRef,
@@ -199,6 +205,18 @@ export function PhotoSection({
                   </div>
                 </div>
 
+                {photo.edited_storage_path && (
+                  <Badge tone="brand">보정됨{photo.edit_preset_name ? ` · ${photo.edit_preset_name}` : ""}</Badge>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setEditingPhoto(photo)}
+                  className="rounded-lg border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 hover:bg-zinc-100"
+                >
+                  사진 편집
+                </button>
+
                 <p className="text-[11px] text-zinc-500">
                   <span className="font-medium text-zinc-600">AI 분석: </span>
                   {photo.ai_analysis ?? "-"}
@@ -215,6 +233,15 @@ export function PhotoSection({
             ))}
           </div>
         </>
+      )}
+
+      {editingPhoto && (
+        <PhotoEditor
+          photo={editingPhoto}
+          allPhotos={photos}
+          collaborationId={collaborationId}
+          onClose={() => setEditingPhoto(null)}
+        />
       )}
     </section>
   );
