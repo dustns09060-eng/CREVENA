@@ -24,6 +24,7 @@ import {
   type WithSourceMeta,
 } from "@/lib/ai/prompts";
 import type { ContentSourceMeta } from "@/lib/content-source";
+import { arrangeForContentType, type PhotoSelection } from "@/lib/photo-select";
 import { SOURCE_PLATFORM_LABEL } from "@/lib/content-source";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -178,6 +179,7 @@ export function StudioTabs({
   initialReels,
   initialNaverClip,
   initialCarousel,
+  initialPhotoSelection,
 }: {
   collaborationId: string;
   collaborationInfo: Omit<ContentGenerationInput, "reviewNotes">;
@@ -205,6 +207,9 @@ export function StudioTabs({
   // STEP46: 릴스와 같은 ReelsProject 타입이지만 완전히 별개의 prop/DB row다.
   initialNaverClip?: { id: string; generationInput: ReelsProject | null };
   initialCarousel?: { id: string; generationInput: CarouselProject | null };
+  // STEP47: null when AI Photo Select has never run for this collaboration,
+  // or when migration 0026 isn't applied yet (page.tsx tolerates that).
+  initialPhotoSelection?: PhotoSelection | null;
 }) {
   const [tab, setTab] = useState<TabKey>("BLOG");
   const [reviewNotes, setReviewNotes] = useState<ReviewNotes>(initialReviewNotes);
@@ -216,7 +221,7 @@ export function StudioTabs({
   const [guideAnalyzedText, setGuideAnalyzedText] = useState<string | null>(null);
   const [guideError, setGuideError] = useState<string | null>(null);
   const guideStale = guideAnalysis !== null && guideText !== guideAnalyzedText;
-  const photoManager = usePhotoManager(collaborationId, initialPhotos);
+  const photoManager = usePhotoManager(collaborationId, initialPhotos, initialPhotoSelection);
   const [selected, setSelected] = useState<Record<StudioPlatform, boolean>>({
     BLOG: true,
     INSTAGRAM_FEED: true,
@@ -307,6 +312,9 @@ export function StudioTabs({
   // click can fire before React re-renders with the disabled button, so a
   // synchronous ref is checked first to guarantee only one run starts.
   const pipelineRunningRef = useRef(false);
+  // STEP47: "추천 사진으로 콘텐츠 만들기" jumps to the existing 결과 확인/편집
+  // section — no new studio shell is introduced.
+  const resultSectionRef = useRef<HTMLElement>(null);
 
   function handleReviewNoteBlur(key: keyof ReviewNotes, value: string) {
     updateReviewNotes(collaborationId, { ...reviewNotes, [key]: value });
@@ -745,6 +753,21 @@ export function StudioTabs({
   const photoCount = photoManager.photos.length;
   const analyzedPhotoCount = photoCount - unanalyzedPhotoCount;
 
+  // STEP47 Step 33 — 콘텐츠별 구성. ONE common recommended set (the photos
+  // that survive photoManager.excludePhotoIds, exactly as before STEP47),
+  // then a LIGHT per-content-type adjustment on top. Deliberately not a
+  // per-platform ranking system: arrangeForContentType only ever reorders,
+  // it never adds a photo the user excluded and never pads.
+  //   - Blog      : PhotoBlogStudio keeps reading photoManager directly, so
+  //                 paragraphs stay bound to display_order (사진-문단 대응).
+  //   - Carousel  : 대표 이미지 후보 first; the existing MAX_CAROUSEL_CARDS
+  //                 cap still lives in CarouselStudio, untouched.
+  //   - Reels/Clip: recommended set in display_order (cover already moved to
+  //                 first by the select run); video scenes are unaffected.
+  const usablePhotos = photoManager.photos.filter((p) => !photoManager.excludePhotoIds.has(p.id));
+  const carouselPhotos = arrangeForContentType(usablePhotos, photoManager.selection, "CAROUSEL");
+  const shortFormPhotos = arrangeForContentType(usablePhotos, photoManager.selection, "SHORTFORM");
+
   return (
     <div className="flex flex-col gap-6">
       {/* STEP43-1: workspace header — real brand/product + real guide/photo
@@ -807,6 +830,15 @@ export function StudioTabs({
         requiredPhotoCount={photoBlogInfo.requiredPhotoCount}
         minimumPhotos={guideAnalysis?.minimumPhotos}
         collaborationId={collaborationId}
+        brandName={photoBlogInfo.brandName}
+        productName={photoBlogInfo.productName}
+        guideRawContent={guideText}
+        guideAnalysis={guideAnalysis}
+        reviewNotes={reviewNotes}
+        onGoToStudio={() => {
+          setTab("BLOG");
+          resultSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
       />
 
       {/* ③ 내 경험 추가하기 (선택) */}
@@ -909,7 +941,7 @@ export function StudioTabs({
       )}
 
       {/* ⑦ 결과 확인/편집 (+ ⑧ 최종 가이드 검사, ⑨ 저장/복사는 각 결과 패널 하단에 포함) */}
-      <section>
+      <section ref={resultSectionRef}>
         <SectionHeader
           step={7}
           title="결과 확인/편집"
@@ -1003,7 +1035,7 @@ export function StudioTabs({
           <ReelsStudio
             key={`reels-${remountNonce}`}
             collaborationId={collaborationId}
-            photos={photoManager.photos.filter((p) => !photoManager.excludePhotoIds.has(p.id))}
+            photos={shortFormPhotos}
             initialVideos={initialVideos}
             reviewNotes={reviewNotes}
             collaborationInfo={photoBlogInfo}
@@ -1020,7 +1052,7 @@ export function StudioTabs({
             key={`naver-clip-${remountNonce}`}
             platform="NAVER_CLIP"
             collaborationId={collaborationId}
-            photos={photoManager.photos.filter((p) => !photoManager.excludePhotoIds.has(p.id))}
+            photos={shortFormPhotos}
             initialVideos={initialVideos}
             reviewNotes={reviewNotes}
             collaborationInfo={photoBlogInfo}
@@ -1031,7 +1063,7 @@ export function StudioTabs({
           <CarouselStudio
             key={`carousel-${remountNonce}`}
             collaborationId={collaborationId}
-            photos={photoManager.photos.filter((p) => !photoManager.excludePhotoIds.has(p.id))}
+            photos={carouselPhotos}
             reviewNotes={reviewNotes}
             collaborationInfo={photoBlogInfo}
             guideAnalysis={guideAnalysis}

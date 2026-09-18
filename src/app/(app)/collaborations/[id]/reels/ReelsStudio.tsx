@@ -80,6 +80,23 @@ async function callGenerate(args: {
 
 const DEFAULT_CAPTION_STYLE: ReelsCaptionStyle = { preset: "basic", position: "bottom", size: "medium" };
 
+// STEP47: repairs duplicate scene ids in an already-saved project (see the
+// useState call that uses it). Pure — returns the same object when there is
+// nothing to fix, so a pre-existing project never re-renders for no reason.
+function withUniqueSceneIds(project: ReelsProject): ReelsProject {
+  const seen = new Set<string>();
+  let changed = false;
+  const scenes = project.scenes.map((s, i) => {
+    if (!seen.has(s.id)) {
+      seen.add(s.id);
+      return s;
+    }
+    changed = true;
+    return { ...s, id: `${i}-${s.mediaType}:${s.mediaId}` };
+  });
+  return changed ? { ...project, scenes } : project;
+}
+
 // STEP46: 네이버 클립은 릴스와 편집 흐름(장면 구성 → 편집 → 미리보기 →
 // MP4)이 동일해서 스튜디오를 새로 만들지 않고 이 컴포넌트를 그대로 쓴다.
 // 플랫폼마다 다른 부분만 여기 모아두고, 렌더러(render.ts)·장면 편집 UI·
@@ -152,7 +169,15 @@ export function ReelsStudio({
     handleMove: handleMoveVideo,
   } = videoManager;
 
-  const [project, setProject] = useState<ReelsProject | null>(initial?.generationInput ?? null);
+  // STEP47 fix: projects saved BEFORE the unique-scene-id fix below can
+  // contain two scenes sharing one `photo:<id>` id (the AI may reuse a photo
+  // across scenes). Left as-is they produce a React duplicate-key warning
+  // AND a real bug — editing one of those scenes edits the other, since
+  // updateScene/removeScene match on id. Repaired once on load; nothing is
+  // added, removed or reordered, only the id field is made unique.
+  const [project, setProject] = useState<ReelsProject | null>(
+    initial?.generationInput ? withUniqueSceneIds(initial.generationInput) : null,
+  );
   const [savedId, setSavedId] = useState<string | null>(initial?.id ?? null);
   const [targetDuration, setTargetDuration] = useState<15 | 30 | 60>(
     initial?.generationInput?.targetDurationSeconds ?? 30,
@@ -251,14 +276,22 @@ export function ReelsStudio({
       }>(raw);
 
       const scenes: ReelsScene[] = parsed.scenes
-        .map((s): ReelsScene | null => {
+        .map((s, i): ReelsScene | null => {
           const [mediaType, mediaId] = s.mediaId.split(":") as ["photo" | "video", string];
           if (mediaType === "photo" && !photoById.has(mediaId)) return null;
           if (mediaType === "video" && !videoById.has(mediaId)) return null;
           const video = mediaType === "video" ? videoById.get(mediaId) : undefined;
           const duration = Math.max(0.5, s.durationSeconds || 2);
           return {
-            id: s.mediaId,
+            // STEP47 fix (found in real testing): scene.id is the identity
+            // updateScene/removeScene and the React key both use, so it must
+            // be unique PER SCENE, not per media. The AI legitimately reuses
+            // the same photo in two scenes — which became common once AI
+            // Photo Select narrowed the pool from every uploaded photo to
+            // the recommended few — and the old `photo:<id>` id then made
+            // editing one scene's caption/duration silently edit the other.
+            // Same `<index>-<mediaKey>` shape CarouselStudio already uses.
+            id: `${i}-${s.mediaId}`,
             mediaType,
             mediaId,
             included: true,

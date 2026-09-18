@@ -1,0 +1,84 @@
+-- STEP 47: AI Photo Select & Guide-Aware Content Composition V1
+--
+-- Adds ONE nullable jsonb column so an AI Photo Select recommendation (and,
+-- more importantly, the user's own 꼭 사용 / 제외 / 사용 decisions on top of
+-- it) survives a page reload.
+--
+-- WHY A COLUMN AT ALL / WHY NOT ZERO MIGRATION:
+--   STEP47 was designed migration-first-avoidant. Every existing storage
+--   slot was checked and rejected for a real reason, not for convenience:
+--     - collaboration_photos has no free jsonb/metadata column. Its
+--       existing columns are all load-bearing: photo_type carries a CHECK
+--       constraint over the 8 PHOTO_TYPES, ai_analysis is the vision
+--       description, user_memo / body_section are user- and blog-owned,
+--       display_order encodes 대표사진 (index 0) since STEP35.5, and the
+--       0022 edit_* columns are XMP-owned.
+--     - contents.generation_input was the STEP38/STEP42 precedent, but a
+--       row there needs a `platform` value from contents_platform_check.
+--       A photo SELECTION is not a platform's content — it is shared by
+--       Blog/Instagram/Carousel/Reels/Naver Clip at once — so squatting an
+--       unused legacy platform value ('NAVER_BLOG_BODY') to hold it would
+--       be a lie in the data model that the next step has to live with.
+--     - collaborations.review_notes is jsonb but is the user's own 후기
+--       메모 (STEP33), read directly into every generation prompt.
+--   The honest shape is therefore one nullable jsonb on the collaboration.
+--
+-- WHY THIS IS LOW RISK:
+--   Pure additive, nullable, NO default, NO CHECK constraint, no data
+--   rewritten, no column dropped or retyped, no index. Existing rows get
+--   NULL and behave exactly as before. The currently deployed app never
+--   reads or writes this column, so the migration is backwards compatible
+--   in both directions.
+--
+-- WHY THE APP STILL WORKS WITHOUT IT (deliberate):
+--   STEP47 ships degradation-tolerant: the read in
+--   src/app/(app)/collaborations/[id]/content/page.tsx is a SEPARATE query
+--   whose failure is caught and logged (it never joins the main
+--   collaboration select, so a missing column can never break Content
+--   Studio), and savePhotoSelection() reports {persisted:false} instead of
+--   throwing. Until this migration is applied, an AI Photo Select
+--   recommendation behaves exactly like STEP35.5's 제외 추천 always has —
+--   session-only, lost on reload — and the UI says so in plain Korean
+--   rather than silently pretending it saved.
+--
+-- SHAPE (validated in TypeScript, see src/lib/photo-select.ts —
+-- sanitizePhotoSelection() re-validates EVERY photo id against the real
+-- collaboration_photos id set on read, so a stale/deleted/hallucinated id
+-- stored here can never reach the UI):
+--   {
+--     "version": 1,
+--     "pinnedIds": ["<uuid>"],          -- 꼭 사용
+--     "excludedIds": ["<uuid>"],        -- 제외
+--     "includedIds": ["<uuid>"],        -- 사용 (AI 추천 아님)
+--     "run": {                          -- 마지막 추천 실행 결과 (nullable)
+--       "generatedAt": "<iso>",
+--       "guideTextAtGeneration": "...", -- STEP42식 stale 감지용 스냅샷
+--       "consideredPhotoIds": [...],
+--       "selectedPhotoIds": [...],
+--       "coverCandidateIds": [...],
+--       "requiredShots": [{ "requirement", "status", "photoIds", "note" }],
+--       "groups": [{ "photoIds", "keepPhotoId", "reason" }],
+--       "reasons": [{ "photoId", "reason", "role" }]
+--     }
+--   }
+--
+-- PRIVACY: this column stores photo ids and short Korean strings the AI
+-- wrote about photo CONTENT/COMPOSITION only. No face/identity/demographic
+-- inference is produced anywhere in STEP47 (the prompt forbids it
+-- explicitly), and no image bytes, Storage path or signed URL is stored
+-- here.
+--
+-- ROLLBACK:
+--   alter table public.collaborations drop column if exists photo_select;
+--   (Dropping it only loses saved selections; no other feature reads it.)
+--
+-- OPERATOR STEPS (this file is NOT auto-applied by this change):
+--   1. Run supabase/scripts/0026_precheck.sql  (READ ONLY) and record output.
+--   2. Apply this file.
+--   3. Run supabase/scripts/0026_postcheck.sql (READ ONLY) and compare.
+
+alter table public.collaborations
+  add column if not exists photo_select jsonb;
+
+comment on column public.collaborations.photo_select is
+  'STEP47 AI Photo Select: last recommendation run + the user''s 꼭 사용/제외/사용 overrides. Nullable; app degrades to session-only selection when absent.';

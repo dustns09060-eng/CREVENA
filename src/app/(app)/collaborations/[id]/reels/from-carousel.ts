@@ -33,8 +33,11 @@ function closestDurationOption(totalSeconds: number): 15 | 30 | 60 {
 export function mapCarouselToReelsScenes(carousel: CarouselProject): ReelsScene[] {
   return carousel.cards
     .filter((c) => c.included)
-    .map((card): ReelsScene => ({
-      id: `photo:${card.photoId}`,
+    .map((card, i): ReelsScene => ({
+      // STEP47 fix: unique per scene, not per photo — a carousel may legally
+      // use the same photo on two cards, and a duplicated scene id makes
+      // editing one scene edit the other (see ReelsStudio's same fix).
+      id: `${i}-photo:${card.photoId}`,
       mediaType: "photo",
       mediaId: card.photoId,
       included: true,

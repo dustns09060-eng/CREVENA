@@ -86,7 +86,12 @@ export type ReelsCaptionStyle = {
 };
 
 export type ReelsScene = {
-  id: string; // `photo:<collaboration_photos.id>` or `video:<collaboration_videos.id>`
+  // Unique per SCENE (`<index>-photo:<id>` / `<index>-video:<id>`), not per
+  // media: updateScene/removeScene and the React key both key off this, and
+  // the same photo may legitimately appear in more than one scene (STEP47).
+  // Older saved projects can still carry the pre-STEP47 `photo:<id>` form;
+  // they keep working, they just can't have had duplicates.
+  id: string;
   mediaType: "photo" | "video";
   mediaId: string;
   included: boolean;

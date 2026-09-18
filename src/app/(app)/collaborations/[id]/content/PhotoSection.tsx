@@ -6,6 +6,10 @@ import { PHOTO_TYPE_LABELS } from "@/lib/photo-type";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
 import { Badge } from "@/components/ui/Badge";
 import { PhotoEditor } from "../photos/PhotoEditor";
+import { PhotoSelectPanel } from "./PhotoSelectPanel";
+import { PHOTO_SELECT_STATE_LABELS } from "@/lib/photo-select";
+import type { GuideAnalysis } from "@/lib/ai/guide-analysis-prompts";
+import type { ReviewNotes } from "@/lib/ai/prompts";
 import type { PhotoManager, PhotoWithUrl } from "../photos/usePhotoManager";
 
 // STEP35.5 item 4/22: 사진 준비 rendered once at the top of the studio
@@ -17,6 +21,14 @@ export function PhotoSection({
   requiredPhotoCount,
   minimumPhotos,
   collaborationId,
+  // STEP47: everything AI Photo Select needs. All of it already exists in
+  // StudioTabs — nothing new is fetched for this feature.
+  brandName,
+  productName,
+  guideRawContent,
+  guideAnalysis,
+  reviewNotes,
+  onGoToStudio,
 }: {
   manager: PhotoManager;
   requiredPhotoCount: number | null;
@@ -24,6 +36,12 @@ export function PhotoSection({
   // passed through so exclude-suggestion never drops usable photos below it.
   minimumPhotos?: number | null;
   collaborationId: string;
+  brandName: string;
+  productName: string;
+  guideRawContent: string;
+  guideAnalysis: GuideAnalysis | null;
+  reviewNotes: ReviewNotes;
+  onGoToStudio?: () => void;
 }) {
   const [editingPhoto, setEditingPhoto] = useState<PhotoWithUrl | null>(null);
   const {
@@ -35,6 +53,8 @@ export function PhotoSection({
     ordering,
     busy,
     excludePhotoIds,
+    stateOf,
+    selection,
     orderStale,
     handleAddPhotos,
     handleAnalyzeAll,
@@ -136,6 +156,18 @@ export function PhotoSection({
             </div>
           </div>
 
+          {/* STEP47: AI로 사진 고르기 — 선택 사항이며, 쓰지 않아도 아래
+              사진 목록과 모든 콘텐츠 생성은 이전과 똑같이 동작한다. */}
+          <PhotoSelectPanel
+            manager={manager}
+            brandName={brandName}
+            productName={productName}
+            guideRawContent={guideRawContent}
+            guideAnalysis={guideAnalysis}
+            reviewNotes={reviewNotes}
+            onGoToStudio={onGoToStudio}
+          />
+
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {photos.map((photo, index) => (
               <div
@@ -170,9 +202,14 @@ export function PhotoSection({
                   >
                     ×
                   </button>
-                  {excludePhotoIds.has(photo.id) && (
-                    <span className="absolute bottom-1 left-1 right-1 rounded bg-amber-500/90 px-1 py-0.5 text-center text-[9px] font-medium text-white">
-                      제외 추천
+                  {/* STEP47: 선택 상태를 색이 아니라 기호+글자로 표시한다.
+                      추천을 한 번도 실행하지 않았다면 기존 "제외 추천"
+                      배지와 동일하게 동작한다. */}
+                  {(selection.run
+                    ? stateOf(photo.id) !== "INCLUDE"
+                    : excludePhotoIds.has(photo.id)) && (
+                    <span className="absolute bottom-1 left-1 right-1 rounded bg-zinc-900/85 px-1 py-0.5 text-center text-[9px] font-medium text-white">
+                      {selection.run ? PHOTO_SELECT_STATE_LABELS[stateOf(photo.id)] : "제외 추천"}
                     </span>
                   )}
                 </div>
