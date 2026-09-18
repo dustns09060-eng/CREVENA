@@ -36,7 +36,11 @@ export type ContentPlatform =
   | "COMMENT_REPLY"
   | "DM_REPLY"
   | "REELS"
-  | "CAROUSEL";
+  | "CAROUSEL"
+  // STEP46: 네이버 클립 프로젝트. REELS와 동일하게 generation_input jsonb에
+  // 저장되지만 platform 값이 다르므로 Reels 프로젝트와 물리적으로 분리된다.
+  // DB CHECK 제약은 0025_naver_clip_platform.sql에서 확장한다.
+  | "NAVER_CLIP";
 
 export type ContentStatus = "DRAFT" | "REVIEW" | "APPROVED" | "POSTED";
 
@@ -157,6 +161,11 @@ export type Database = {
           ad_disclosure_text: string | null;
           memo: string | null;
           review_notes: Json;
+          // STEP47 (migration 0026 — NOT yet applied to production): AI
+          // Photo Select run + the user's 꼭 사용/제외/사용 overrides. Every
+          // read/write of this column is written to tolerate the column not
+          // existing yet — see photo-select-actions.ts.
+          photo_select: Json | null;
           status: CollaborationStatus;
           created_at: string;
           updated_at: string;
@@ -187,6 +196,7 @@ export type Database = {
           ad_disclosure_text?: string | null;
           memo?: string | null;
           review_notes?: Json;
+          photo_select?: Json | null;
           status?: CollaborationStatus;
           created_at?: string;
           updated_at?: string;

@@ -8,6 +8,7 @@ import type { BlogMeta } from "../photos/actions";
 import type { ReelsProject } from "../reels/actions";
 import type { CarouselProject } from "../carousel/actions";
 import type { ContentStatus } from "@/types/database";
+import { sanitizePhotoSelection } from "@/lib/photo-select";
 
 const BUCKET = "collaboration-photos";
 const VIDEO_BUCKET = "collaboration-videos";
@@ -15,6 +16,9 @@ const STUDIO_PLATFORMS: ContentPlatformKey[] = ["INSTAGRAM_FEED", "THREADS"];
 const BLOG_PLATFORM = "NAVER_BLOG";
 const REELS_PLATFORM = "REELS";
 const CAROUSEL_PLATFORM = "CAROUSEL";
+// STEP46: 네이버 클립 프로젝트. REELS와 같은 ReelsProject 모양이지만 platform
+// 값이 달라 DB row가 분리되므로, 릴스 프로젝트를 덮어쓰지 않는다.
+const NAVER_CLIP_PLATFORM = "NAVER_CLIP";
 
 export default async function CollaborationContentPage({
   params,
@@ -36,6 +40,23 @@ export default async function CollaborationContentPage({
     notFound();
   }
 
+  // STEP47: read the saved AI Photo Select state in its OWN query, never
+  // joined into the collaboration select above. Migration 0026 (which adds
+  // collaborations.photo_select) is not applied to production by STEP47, so
+  // this query can legitimately fail with "column does not exist" — and a
+  // failure here must degrade the feature to session-only, never break
+  // Content Studio. Sanitized against the real photo id set further below.
+  const { data: photoSelectRow, error: photoSelectError } = await supabase
+    .from("collaborations")
+    .select("photo_select")
+    .eq("id", id)
+    .maybeSingle();
+  if (photoSelectError) {
+    console.warn(
+      `collaborations.photo_select unavailable (STEP47 migration 0026 likely not applied): ${photoSelectError.message}`,
+    );
+  }
+
   const { data: guide } = await supabase
     .from("collaboration_guides")
     .select("raw_content")
@@ -52,7 +73,13 @@ export default async function CollaborationContentPage({
     .from("contents")
     .select("id, platform, body, status, generation_input")
     .eq("collaboration_id", id)
-    .in("platform", [...STUDIO_PLATFORMS, BLOG_PLATFORM, REELS_PLATFORM, CAROUSEL_PLATFORM])
+    .in("platform", [
+      ...STUDIO_PLATFORMS,
+      BLOG_PLATFORM,
+      REELS_PLATFORM,
+      CAROUSEL_PLATFORM,
+      NAVER_CLIP_PLATFORM,
+    ])
     .order("created_at", { ascending: false });
 
   const initialContents: Partial<
@@ -82,6 +109,12 @@ export default async function CollaborationContentPage({
   const latestReels = existingContents?.find((c) => c.platform === REELS_PLATFORM);
   const initialReels = latestReels
     ? { id: latestReels.id, generationInput: (latestReels.generation_input as ReelsProject | null) ?? null }
+    : undefined;
+
+  // STEP46: 릴스와 완전히 별개의 row에서 읽어온다.
+  const latestNaverClip = existingContents?.find((c) => c.platform === NAVER_CLIP_PLATFORM);
+  const initialNaverClip = latestNaverClip
+    ? { id: latestNaverClip.id, generationInput: (latestNaverClip.generation_input as ReelsProject | null) ?? null }
     : undefined;
 
   const latestCarousel = existingContents?.find((c) => c.platform === CAROUSEL_PLATFORM);
@@ -127,6 +160,13 @@ export default async function CollaborationContentPage({
 
   const photosWithUrls = photoList.map((p, i) => ({ ...p, ...signedUrls[i] }));
 
+  // Every stored photo id is re-validated against the photos that actually
+  // exist right now, so an id left behind by a deleted photo (or a stale
+  // write from another tab) can never reach the client.
+  const initialPhotoSelection = photoSelectRow?.photo_select
+    ? sanitizePhotoSelection(photoSelectRow.photo_select, photoList.map((p) => p.id))
+    : null;
+
   const { data: videos } = await supabase
     .from("collaboration_videos")
     .select("*")
@@ -171,7 +211,9 @@ export default async function CollaborationContentPage({
           initialBlog={initialBlog}
           initialVideos={videosWithUrls}
           initialReels={initialReels}
+          initialNaverClip={initialNaverClip}
           initialCarousel={initialCarousel}
+          initialPhotoSelection={initialPhotoSelection}
           collaborationInfo={{
             brandName: collaboration.brand_name,
             productName: collaboration.product_name,
