@@ -15,6 +15,9 @@ const STUDIO_PLATFORMS: ContentPlatformKey[] = ["INSTAGRAM_FEED", "THREADS"];
 const BLOG_PLATFORM = "NAVER_BLOG";
 const REELS_PLATFORM = "REELS";
 const CAROUSEL_PLATFORM = "CAROUSEL";
+// STEP46: 네이버 클립 프로젝트. REELS와 같은 ReelsProject 모양이지만 platform
+// 값이 달라 DB row가 분리되므로, 릴스 프로젝트를 덮어쓰지 않는다.
+const NAVER_CLIP_PLATFORM = "NAVER_CLIP";
 
 export default async function CollaborationContentPage({
   params,
@@ -52,7 +55,13 @@ export default async function CollaborationContentPage({
     .from("contents")
     .select("id, platform, body, status, generation_input")
     .eq("collaboration_id", id)
-    .in("platform", [...STUDIO_PLATFORMS, BLOG_PLATFORM, REELS_PLATFORM, CAROUSEL_PLATFORM])
+    .in("platform", [
+      ...STUDIO_PLATFORMS,
+      BLOG_PLATFORM,
+      REELS_PLATFORM,
+      CAROUSEL_PLATFORM,
+      NAVER_CLIP_PLATFORM,
+    ])
     .order("created_at", { ascending: false });
 
   const initialContents: Partial<
@@ -82,6 +91,12 @@ export default async function CollaborationContentPage({
   const latestReels = existingContents?.find((c) => c.platform === REELS_PLATFORM);
   const initialReels = latestReels
     ? { id: latestReels.id, generationInput: (latestReels.generation_input as ReelsProject | null) ?? null }
+    : undefined;
+
+  // STEP46: 릴스와 완전히 별개의 row에서 읽어온다.
+  const latestNaverClip = existingContents?.find((c) => c.platform === NAVER_CLIP_PLATFORM);
+  const initialNaverClip = latestNaverClip
+    ? { id: latestNaverClip.id, generationInput: (latestNaverClip.generation_input as ReelsProject | null) ?? null }
     : undefined;
 
   const latestCarousel = existingContents?.find((c) => c.platform === CAROUSEL_PLATFORM);
@@ -171,6 +186,7 @@ export default async function CollaborationContentPage({
           initialBlog={initialBlog}
           initialVideos={videosWithUrls}
           initialReels={initialReels}
+          initialNaverClip={initialNaverClip}
           initialCarousel={initialCarousel}
           collaborationInfo={{
             brandName: collaboration.brand_name,
