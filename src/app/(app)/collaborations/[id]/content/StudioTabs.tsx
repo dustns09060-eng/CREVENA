@@ -1,16 +1,30 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { PhotoBlogStudio, type PhotoBlogStudioHandle } from "../photos/PhotoBlogStudio";
 import { usePhotoManager } from "../photos/usePhotoManager";
 import { PhotoSection } from "./PhotoSection";
 import { PlatformPanel, type PlatformPanelHandle, type PlatformParts } from "./PlatformPanel";
 import { GuideAnalysisCard } from "./GuideAnalysisCard";
+import { saveContent } from "./actions";
 import { ReelsStudio } from "../reels/ReelsStudio";
 import type { VideoWithUrl } from "../reels/useVideoManager";
-import type { ReelsProject } from "../reels/actions";
+import { saveReelsProject, type ReelsProject } from "../reels/actions";
+import { buildReelsProjectFromCarousel } from "../reels/from-carousel";
 import { CarouselStudio } from "../carousel/CarouselStudio";
-import type { CarouselProject } from "../carousel/actions";
+import { saveCarouselProject, type CarouselCard, type CarouselCardRole, type CarouselProject } from "../carousel/actions";
+import { buildCarouselPlanPrompt } from "@/lib/ai/carousel-prompts";
+import {
+  buildRepurposeFromBlogPrompt,
+  assembleInstagramText,
+  assembleThreadsText,
+  type InstagramParts,
+  type ThreadsParts,
+  type WithSourceMeta,
+} from "@/lib/ai/prompts";
+import type { ContentSourceMeta } from "@/lib/content-source";
+import { SOURCE_PLATFORM_LABEL } from "@/lib/content-source";
 import {
   SectionHeader,
   Accordion,
@@ -53,6 +67,91 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "REELS", label: "Reels" },
   { key: "CAROUSEL", label: "카드뉴스" },
 ];
+
+type RepurposeTarget = "INSTAGRAM_FEED" | "THREADS" | "CAROUSEL" | "REELS";
+
+// STEP42 item 12/13: a small "X에서 생성됨" provenance label plus, when the
+// source has since changed, a stale notice — never an automatic
+// regeneration, only a hint that repurposing again is available. Declared
+// at module scope (not inside StudioTabs) because components created during
+// render reset their state on every parent re-render.
+// Korean subject particle (이/가): picked from whether the label's last
+// syllable has a 받침 (final consonant), via the Unicode Hangul syllable
+// block's decomposition — Hangul syllables occupy U+AC00–U+D7A3 in blocks of
+// 588 (19 leads × 21 vowels × 28 finals), so `(code - 0xAC00) % 28 === 0`
+// means "no final consonant" (받침 없음) → 가, otherwise → 이. Caught by
+// testing the actual UI text: "블로그이 변경되었습니다"/"카드뉴스이
+// 변경되었습니다" are both wrong (both labels end in a 받침-less syllable),
+// so a single hardcoded particle can't cover every current or future source
+// label.
+function withSubjectParticle(word: string): string {
+  const lastChar = word.at(-1);
+  if (!lastChar) return word;
+  const code = lastChar.codePointAt(0)!;
+  if (code < 0xac00 || code > 0xd7a3) return `${word}가`;
+  const hasFinalConsonant = (code - 0xac00) % 28 !== 0;
+  return `${word}${hasFinalConsonant ? "이" : "가"}`;
+}
+
+function RepurposeNotice({ sourceMeta, stale }: { sourceMeta?: ContentSourceMeta; stale: boolean }) {
+  if (!sourceMeta) return null;
+  const label = SOURCE_PLATFORM_LABEL[sourceMeta.sourcePlatform];
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-[11px] text-zinc-400">{label}에서 생성됨</p>
+      {stale && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+          △ 원본 {withSubjectParticle(label)} 변경되었습니다. 다시 만들 수 있습니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// STEP42 item 14: "다른 콘텐츠로 만들기" — plain-language buttons (never the
+// words Repurpose/Source/Transform) placed right under the relevant studio.
+function RepurposeBar({
+  items,
+  repurposing,
+  error,
+  success,
+  onGoToSuccess,
+}: {
+  items: { target: RepurposeTarget; label: string; onClick: () => void; disabled?: boolean; reason?: string }[];
+  repurposing: RepurposeTarget | null;
+  error: string | null;
+  success: { target: RepurposeTarget; label: string } | null;
+  onGoToSuccess: (target: RepurposeTarget) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+      <p className="text-xs font-semibold text-zinc-500">다른 콘텐츠로 만들기</p>
+      <div className="flex flex-wrap gap-2">
+        {items.map((item) => (
+          <button
+            key={item.target}
+            type="button"
+            onClick={item.onClick}
+            disabled={!!item.disabled || repurposing !== null}
+            title={item.reason}
+            className="rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-40"
+          >
+            {repurposing === item.target ? `${item.label} 만드는 중...` : item.label}
+          </button>
+        ))}
+      </div>
+      {error && <p className="text-[11px] text-red-600">{error}</p>}
+      {success && (
+        <p className="text-[11px] text-emerald-700">
+          ✓ {success.label} 콘텐츠가 생성되었습니다.{" "}
+          <button type="button" className="underline" onClick={() => onGoToSuccess(success.target)}>
+            확인하기
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function StudioTabs({
   collaborationId,
@@ -119,6 +218,35 @@ export function StudioTabs({
   const [pipelineSummary, setPipelineSummary] = useState<string | null>(null);
   const [budgetWarning, setBudgetWarning] = useState<string | null>(null);
   const [checkingBudget, setCheckingBudget] = useState(false);
+
+  // STEP42: "Source Content" repurposing. PlatformPanel/ReelsStudio/
+  // CarouselStudio each seed their own internal state from `initial` only
+  // once, at mount (they stay permanently mounted, just hidden, to preserve
+  // in-progress edits across tab switches — see the render section below).
+  // A repurpose action writes a brand-new row to `contents` from OUTSIDE
+  // those components, so the only way to get the freshly generated content
+  // to actually appear is to (a) keep our own mirror of each "initial"
+  // value that we control, and (b) force a one-time remount (via `key`)
+  // exactly when that mirror changes — router.refresh() alone can't do this
+  // reliably since its timing relative to a local state update isn't
+  // guaranteed, so the mirror is updated synchronously right after a
+  // successful save instead of waiting on it.
+  const [localInstagram, setLocalInstagram] = useState(initialInstagram);
+  const [localThreads, setLocalThreads] = useState(initialThreads);
+  const [localCarousel, setLocalCarousel] = useState(initialCarousel);
+  const [localReels, setLocalReels] = useState(initialReels);
+  const [remountNonce, setRemountNonce] = useState(0);
+
+  const [repurposing, setRepurposing] = useState<RepurposeTarget | null>(null);
+  const repurposingRef = useRef(false);
+  const [repurposeError, setRepurposeError] = useState<string | null>(null);
+  const [repurposeSuccess, setRepurposeSuccess] = useState<{ target: RepurposeTarget; label: string } | null>(null);
+  const [repurposeConfirm, setRepurposeConfirm] = useState<{
+    target: RepurposeTarget;
+    label: string;
+    run: () => Promise<void>;
+  } | null>(null);
+  const router = useRouter();
 
   const blogRef = useRef<PhotoBlogStudioHandle>(null);
   const igRef = useRef<PlatformPanelHandle>(null);
@@ -312,6 +440,252 @@ export function StudioTabs({
     setPipelineRunning(false);
   }
 
+  // ---------------------------------------------------------------------
+  // STEP42: Source Content repurposing.
+  //
+  // requestRepurpose() is the single gate every repurpose action goes
+  // through: if the target already has content, it stops and asks for
+  // confirmation (STEP42 item 5) instead of silently overwriting a user's
+  // own edits; otherwise it just runs immediately. The synchronous
+  // repurposingRef guard (same pattern as pipelineRunningRef above and
+  // STEP40's renderingRef) stops a double-click from firing the AI call or
+  // the deterministic mapping twice.
+  // ---------------------------------------------------------------------
+  function requestRepurpose(target: RepurposeTarget, label: string, hasExisting: boolean, run: () => Promise<void>) {
+    if (repurposingRef.current) return;
+    setRepurposeError(null);
+    setRepurposeSuccess(null);
+    if (hasExisting) {
+      setRepurposeConfirm({ target, label, run });
+      return;
+    }
+    void run();
+  }
+
+  async function runRepurpose(target: RepurposeTarget, task: () => Promise<void>) {
+    repurposingRef.current = true;
+    setRepurposing(target);
+    setRepurposeError(null);
+    try {
+      await task();
+    } catch (err) {
+      setRepurposeError(err instanceof Error ? err.message : "생성에 실패했습니다.");
+    } finally {
+      repurposingRef.current = false;
+      setRepurposing(null);
+    }
+  }
+
+  // Blog → Instagram / Blog → Threads (item 6/7): reuses the existing
+  // CONTENT_GENERATE-costed /api/ai/generate route — repurposing from a
+  // Blog isn't priced differently from a from-scratch generation, it's the
+  // same "write one SNS post" operation with a richer source (STEP42 item
+  // 19). Guide Check for the result is computed independently by
+  // PlatformPanel itself once it re-mounts with the new content (item 18) —
+  // nothing here special-cases it.
+  async function repurposeBlogToPlatform(platform: "INSTAGRAM_FEED" | "THREADS") {
+    if (!initialBlog?.id || !initialBlog.body.trim()) {
+      setRepurposeError("먼저 블로그를 작성하고 저장해주세요.");
+      return;
+    }
+    const label = platform === "INSTAGRAM_FEED" ? "Instagram" : "Threads";
+    const existing = platform === "INSTAGRAM_FEED" ? localInstagram : localThreads;
+    const run = () =>
+      runRepurpose(platform, async () => {
+        const { systemPrompt, prompt, responseSchema } = buildRepurposeFromBlogPrompt(platform, initialBlog!.body, {
+          ...collaborationInfo,
+          reviewNotes,
+        });
+        const res = await fetch("/api/ai/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ systemPrompt, prompt, responseSchema, collaborationId, operation: "CONTENT_GENERATE" }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "생성에 실패했습니다.");
+        const parsed = parseJsonResponse<InstagramParts | ThreadsParts>(data.content);
+        const sourceMeta: ContentSourceMeta = {
+          sourcePlatform: "NAVER_BLOG",
+          sourceContentId: initialBlog!.id,
+          sourceGeneratedAt: new Date().toISOString(),
+          sourceSnapshot: initialBlog!.body,
+        };
+        const withMeta: WithSourceMeta<PlatformParts> = { ...parsed, sourceMeta };
+        const bodyText =
+          platform === "INSTAGRAM_FEED"
+            ? assembleInstagramText(parsed as InstagramParts)
+            : assembleThreadsText(parsed as ThreadsParts);
+
+        // STEP42 item 4: never touches the Blog row. Always inserts a new
+        // contents row for the target — the same "regenerate creates a new
+        // row, the newest one wins in page.tsx's `.find()`" convention
+        // PlatformPanel's own regenerate already follows, so no existing
+        // behavior changes.
+        const result = await saveContent({ collaborationId, platform, body: bodyText, generationInput: withMeta });
+        if ("error" in result) throw new Error(result.error);
+
+        const nextLocal = { id: result.id, body: bodyText, status: "DRAFT" as const, generationInput: withMeta };
+        if (platform === "INSTAGRAM_FEED") setLocalInstagram(nextLocal);
+        else setLocalThreads(nextLocal);
+        setStatus(platform, "DONE");
+        setRemountNonce((n) => n + 1);
+        setTab(platform);
+        setRepurposeSuccess({ target: platform, label });
+        router.refresh();
+      });
+
+    requestRepurpose(platform, label, !!existing, run);
+  }
+
+  // Blog → Carousel (item 8): reuses STEP41's carousel-plan AI call/schema/
+  // credit (CAROUSEL_PLAN, 5 credits) as-is, just with the Blog's text added
+  // as an extra source — no new operation, no new route. Photo selection
+  // still goes through photo.ai_analysis exactly like a from-scratch AI 카드뉴스
+  // 만들기 (see buildCarouselPlanPrompt) — never re-analyzed here.
+  async function repurposeBlogToCarousel() {
+    if (!initialBlog?.id || !initialBlog.body.trim()) {
+      setRepurposeError("먼저 블로그를 작성하고 저장해주세요.");
+      return;
+    }
+    const analyzed = photoManager.photos.filter((p) => p.ai_analysis);
+    if (analyzed.length === 0) {
+      setRepurposeError("먼저 사진을 추가하고 분석해주세요.");
+      return;
+    }
+    const run = () =>
+      runRepurpose("CAROUSEL", async () => {
+        const { systemPrompt, prompt, responseSchema } = buildCarouselPlanPrompt({
+          brandName: photoBlogInfo.brandName,
+          productName: photoBlogInfo.productName,
+          requiredKeywords: photoBlogInfo.requiredKeywords,
+          requiredHashtags: photoBlogInfo.requiredHashtags,
+          contentGuide: photoBlogInfo.contentGuide,
+          guideRawContent: photoBlogInfo.guideRawContent,
+          reviewNotes,
+          styleSamples: photoBlogInfo.styleSamples,
+          photos: analyzed.map((p) => ({ id: p.id, description: p.ai_analysis as string })),
+          sourceBlogText: initialBlog!.body,
+        });
+        const res = await fetch("/api/ai/carousel-plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ systemPrompt, prompt, responseSchema, collaborationId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "생성에 실패했습니다.");
+        const parsed = parseJsonResponse<{
+          cards: { photoId: string; role: string; headline: string; body: string }[];
+        }>(data.content);
+
+        const photoById = new Map(photoManager.photos.map((p) => [p.id, p]));
+        const VALID_ROLES = new Set<CarouselCardRole>([
+          "cover",
+          "product",
+          "detail",
+          "usage",
+          "feature",
+          "experience",
+          "closing",
+        ]);
+        const cards: CarouselCard[] = parsed.cards
+          .map((c, i): CarouselCard | null => {
+            if (!photoById.has(c.photoId)) return null;
+            return {
+              id: `card-${i}-${c.photoId}`,
+              photoId: c.photoId,
+              role: VALID_ROLES.has(c.role as CarouselCardRole) ? (c.role as CarouselCardRole) : "detail",
+              headline: c.headline ?? "",
+              body: c.body ?? "",
+              included: true,
+              textPosition: "bottom",
+              textAlign: "center",
+              headlineSize: "medium",
+            };
+          })
+          .filter((c): c is CarouselCard => c !== null);
+        if (cards.length === 0) throw new Error("AI가 유효한 카드를 만들지 못했습니다. 다시 시도해주세요.");
+
+        const sourceMeta: ContentSourceMeta = {
+          sourcePlatform: "NAVER_BLOG",
+          sourceContentId: initialBlog!.id,
+          sourceGeneratedAt: new Date().toISOString(),
+          sourceSnapshot: initialBlog!.body,
+        };
+        const project: CarouselProject = {
+          cards,
+          template: localCarousel?.generationInput?.template ?? "clean",
+          aspectRatio: localCarousel?.generationInput?.aspectRatio ?? "4:5",
+          guideTextAtGeneration: photoBlogInfo.guideRawContent ?? null,
+          sourceMeta,
+        };
+        const result = await saveCarouselProject({ collaborationId, project });
+        if ("error" in result) throw new Error(result.error);
+
+        setLocalCarousel({ id: result.id, generationInput: project });
+        setRemountNonce((n) => n + 1);
+        setTab("CAROUSEL");
+        setRepurposeSuccess({ target: "CAROUSEL", label: "카드뉴스" });
+        router.refresh();
+      });
+
+    requestRepurpose("CAROUSEL", "카드뉴스", !!localCarousel, run);
+  }
+
+  // Carousel → Reels (item 9/10): pure deterministic mapping, NO AI call —
+  // see reels/from-carousel.ts. Zero credits, zero ai_usage_logs rows.
+  function repurposeCarouselToReels() {
+    const carouselProject = localCarousel?.generationInput;
+    if (!localCarousel?.id || !carouselProject) {
+      setRepurposeError("먼저 카드뉴스를 만들고 저장해주세요.");
+      return;
+    }
+    const includedCount = carouselProject.cards.filter((c) => c.included).length;
+    if (includedCount === 0) {
+      setRepurposeError("포함된 카드가 없습니다.");
+      return;
+    }
+    const run = () =>
+      runRepurpose("REELS", async () => {
+        const sourceMeta: ContentSourceMeta = {
+          sourcePlatform: "CAROUSEL",
+          sourceContentId: localCarousel.id,
+          sourceGeneratedAt: new Date().toISOString(),
+          sourceSnapshot: JSON.stringify(carouselProject.cards),
+        };
+        const project: ReelsProject = { ...buildReelsProjectFromCarousel(carouselProject), sourceMeta };
+        const result = await saveReelsProject({ collaborationId, project });
+        if ("error" in result) throw new Error(result.error);
+
+        setLocalReels({ id: result.id, generationInput: project });
+        setRemountNonce((n) => n + 1);
+        setTab("REELS");
+        setRepurposeSuccess({ target: "REELS", label: "Reels" });
+        router.refresh();
+      });
+
+    requestRepurpose("REELS", "Reels", !!localReels, run);
+  }
+
+  // STEP42 item 13: source-changed / stale detection — compares the
+  // repurposed content's frozen sourceSnapshot against the source's CURRENT
+  // text/cards. Never auto-regenerates; only surfaces a notice so the user
+  // can choose to repurpose again.
+  const blogSourceChangedFor = (sourceMeta: ContentSourceMeta | undefined) =>
+    !!sourceMeta &&
+    sourceMeta.sourcePlatform === "NAVER_BLOG" &&
+    sourceMeta.sourceContentId === initialBlog?.id &&
+    sourceMeta.sourceSnapshot !== initialBlog?.body;
+  const carouselSourceChangedFor = (sourceMeta: ContentSourceMeta | undefined) =>
+    !!sourceMeta &&
+    sourceMeta.sourcePlatform === "CAROUSEL" &&
+    sourceMeta.sourceContentId === localCarousel?.id &&
+    sourceMeta.sourceSnapshot !== JSON.stringify(localCarousel?.generationInput?.cards ?? []);
+
+  const instagramSourceMeta = (localInstagram?.generationInput as WithSourceMeta<PlatformParts> | null)?.sourceMeta;
+  const threadsSourceMeta = (localThreads?.generationInput as WithSourceMeta<PlatformParts> | null)?.sourceMeta;
+  const carouselSourceMeta = localCarousel?.generationInput?.sourceMeta;
+  const reelsSourceMeta = localReels?.generationInput?.sourceMeta;
+
   return (
     <div className="flex flex-col gap-6">
       {/* ① 업체 가이드 */}
@@ -483,7 +857,7 @@ export function StudioTabs({
         {/* All tab panels stay mounted (just hidden) so switching tabs never
             loses in-progress edits, and the one-click refs above stay valid
             regardless of which tab is currently visible. */}
-        <div className={`mt-4 ${tab === "BLOG" ? "" : "hidden"}`}>
+        <div className={`mt-4 flex flex-col gap-3 ${tab === "BLOG" ? "" : "hidden"}`}>
           <PhotoBlogStudio
             ref={blogRef}
             collaborationId={collaborationId}
@@ -494,52 +868,133 @@ export function StudioTabs({
             initial={initialBlog}
             onStatusChange={(s) => setStatus("BLOG", s)}
           />
+          {initialBlog?.id && (
+            <RepurposeBar
+              items={[
+                {
+                  target: "INSTAGRAM_FEED",
+                  label: "이 글로 인스타 만들기",
+                  onClick: () => repurposeBlogToPlatform("INSTAGRAM_FEED"),
+                },
+                {
+                  target: "THREADS",
+                  label: "이 글로 Threads 만들기",
+                  onClick: () => repurposeBlogToPlatform("THREADS"),
+                },
+                {
+                  target: "CAROUSEL",
+                  label: "이 글로 카드뉴스 만들기",
+                  onClick: () => repurposeBlogToCarousel(),
+                },
+              ]}
+              repurposing={repurposing}
+              error={repurposeError}
+              success={repurposeSuccess}
+              onGoToSuccess={setTab}
+            />
+          )}
         </div>
-        <div className={`mt-4 ${tab === "INSTAGRAM_FEED" ? "" : "hidden"}`}>
+        <div className={`mt-4 flex flex-col gap-3 ${tab === "INSTAGRAM_FEED" ? "" : "hidden"}`}>
           <PlatformPanel
+            key={`ig-${remountNonce}`}
             ref={igRef}
             platform="INSTAGRAM_FEED"
             collaborationId={collaborationId}
             collaborationInfo={collaborationInfo}
             reviewNotes={reviewNotes}
-            initial={initialInstagram}
+            initial={localInstagram}
             guideAnalysis={guideAnalysis}
             onStatusChange={(s) => setStatus("INSTAGRAM_FEED", s)}
           />
+          <RepurposeNotice sourceMeta={instagramSourceMeta} stale={blogSourceChangedFor(instagramSourceMeta)} />
         </div>
-        <div className={`mt-4 ${tab === "THREADS" ? "" : "hidden"}`}>
+        <div className={`mt-4 flex flex-col gap-3 ${tab === "THREADS" ? "" : "hidden"}`}>
           <PlatformPanel
+            key={`th-${remountNonce}`}
             ref={threadsRef}
             platform="THREADS"
             collaborationId={collaborationId}
             collaborationInfo={collaborationInfo}
             reviewNotes={reviewNotes}
-            initial={initialThreads}
+            initial={localThreads}
             guideAnalysis={guideAnalysis}
             onStatusChange={(s) => setStatus("THREADS", s)}
           />
+          <RepurposeNotice sourceMeta={threadsSourceMeta} stale={blogSourceChangedFor(threadsSourceMeta)} />
         </div>
-        <div className={`mt-4 ${tab === "REELS" ? "" : "hidden"}`}>
+        <div className={`mt-4 flex flex-col gap-3 ${tab === "REELS" ? "" : "hidden"}`}>
           <ReelsStudio
+            key={`reels-${remountNonce}`}
             collaborationId={collaborationId}
             photos={photoManager.photos.filter((p) => !photoManager.excludePhotoIds.has(p.id))}
             initialVideos={initialVideos}
             reviewNotes={reviewNotes}
             collaborationInfo={photoBlogInfo}
-            initial={initialReels}
+            initial={localReels}
           />
+          <RepurposeNotice sourceMeta={reelsSourceMeta} stale={carouselSourceChangedFor(reelsSourceMeta)} />
         </div>
-        <div className={`mt-4 ${tab === "CAROUSEL" ? "" : "hidden"}`}>
+        <div className={`mt-4 flex flex-col gap-3 ${tab === "CAROUSEL" ? "" : "hidden"}`}>
           <CarouselStudio
+            key={`carousel-${remountNonce}`}
             collaborationId={collaborationId}
             photos={photoManager.photos.filter((p) => !photoManager.excludePhotoIds.has(p.id))}
             reviewNotes={reviewNotes}
             collaborationInfo={photoBlogInfo}
             guideAnalysis={guideAnalysis}
-            initial={initialCarousel}
+            initial={localCarousel}
           />
+          <RepurposeNotice sourceMeta={carouselSourceMeta} stale={blogSourceChangedFor(carouselSourceMeta)} />
+          {localCarousel?.id && (
+            <RepurposeBar
+              items={[{ target: "REELS", label: "이 카드뉴스로 릴스 만들기", onClick: repurposeCarouselToReels }]}
+              repurposing={repurposing}
+              error={repurposeError}
+              success={repurposeSuccess}
+              onGoToSuccess={setTab}
+            />
+          )}
         </div>
       </section>
+
+      {repurposeConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-lg">
+            <p className="text-sm font-semibold text-zinc-900">이미 {repurposeConfirm.label} 콘텐츠가 있습니다</p>
+            <p className="mt-2 text-xs text-zinc-500">
+              기존 내용을 유지할까요, 방금 선택한 원본을 기준으로 새로 만들까요? 새로 만들어도 지금까지 작업한
+              내용은 사라지지 않고 새 결과로 교체됩니다.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setRepurposeConfirm(null)}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => setRepurposeConfirm(null)}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                기존 콘텐츠 유지
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { run } = repurposeConfirm;
+                  setRepurposeConfirm(null);
+                  void run();
+                }}
+                className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              >
+                새로 생성
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
