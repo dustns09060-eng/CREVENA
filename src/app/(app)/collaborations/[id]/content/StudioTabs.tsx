@@ -62,7 +62,7 @@ const REVIEW_NOTE_FIELDS: { key: keyof ReviewNotes; label: string }[] = [
 ];
 
 type StudioPlatform = "BLOG" | "INSTAGRAM_FEED" | "THREADS";
-type TabKey = StudioPlatform | "REELS" | "CAROUSEL";
+type TabKey = StudioPlatform | "REELS" | "CAROUSEL" | "NAVER_CLIP";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "BLOG", label: "블로그" },
@@ -70,6 +70,8 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "THREADS", label: "Threads" },
   { key: "REELS", label: "Reels" },
   { key: "CAROUSEL", label: "카드뉴스" },
+  // STEP46: 네이버 클립. Reels 옆에 두어 숏폼끼리 묶는다.
+  { key: "NAVER_CLIP", label: "네이버 클립" },
 ];
 
 type RepurposeTarget = "INSTAGRAM_FEED" | "THREADS" | "CAROUSEL" | "REELS";
@@ -174,6 +176,7 @@ export function StudioTabs({
   initialBlog,
   initialVideos,
   initialReels,
+  initialNaverClip,
   initialCarousel,
 }: {
   collaborationId: string;
@@ -199,6 +202,8 @@ export function StudioTabs({
   initialBlog?: { id: string; body: string; generationInput: BlogMeta | null };
   initialVideos: VideoWithUrl[];
   initialReels?: { id: string; generationInput: ReelsProject | null };
+  // STEP46: 릴스와 같은 ReelsProject 타입이지만 완전히 별개의 prop/DB row다.
+  initialNaverClip?: { id: string; generationInput: ReelsProject | null };
   initialCarousel?: { id: string; generationInput: CarouselProject | null };
 }) {
   const [tab, setTab] = useState<TabKey>("BLOG");
@@ -244,6 +249,9 @@ export function StudioTabs({
   const [localThreads, setLocalThreads] = useState(initialThreads);
   const [localCarousel, setLocalCarousel] = useState(initialCarousel);
   const [localReels, setLocalReels] = useState(initialReels);
+  // STEP46: 네이버 클립은 릴스와 별도 state. 같이 두면 한쪽 저장이 다른 쪽
+  // 화면을 덮어쓴다.
+  const [localNaverClip, setLocalNaverClip] = useState(initialNaverClip);
   const [remountNonce, setRemountNonce] = useState(0);
   // STEP43 fix (found via real testing): CarouselStudio/ReelsStudio/
   // PlatformPanel also save through their OWN native "저장" button, entirely
@@ -274,6 +282,11 @@ export function StudioTabs({
   if (initialReels !== syncedReels) {
     setSyncedReels(initialReels);
     setLocalReels(initialReels);
+  }
+  const [syncedNaverClip, setSyncedNaverClip] = useState(initialNaverClip);
+  if (initialNaverClip !== syncedNaverClip) {
+    setSyncedNaverClip(initialNaverClip);
+    setLocalNaverClip(initialNaverClip);
   }
 
   const [repurposing, setRepurposing] = useState<RepurposeTarget | null>(null);
@@ -997,6 +1010,22 @@ export function StudioTabs({
             initial={localReels}
           />
           <RepurposeNotice sourceMeta={reelsSourceMeta} stale={carouselSourceChangedFor(reelsSourceMeta)} />
+        </div>
+        {/* STEP46: 네이버 클립. 같은 ReelsStudio를 platform="NAVER_CLIP"으로
+            재사용하므로 장면 편집 UI와 MP4 렌더러가 릴스와 100% 동일하다.
+            initial 은 localNaverClip(별도 DB row)이라 릴스 프로젝트와 섞이지
+            않는다. */}
+        <div className={`mt-4 flex flex-col gap-3 ${tab === "NAVER_CLIP" ? "" : "hidden"}`}>
+          <ReelsStudio
+            key={`naver-clip-${remountNonce}`}
+            platform="NAVER_CLIP"
+            collaborationId={collaborationId}
+            photos={photoManager.photos.filter((p) => !photoManager.excludePhotoIds.has(p.id))}
+            initialVideos={initialVideos}
+            reviewNotes={reviewNotes}
+            collaborationInfo={photoBlogInfo}
+            initial={localNaverClip}
+          />
         </div>
         <div className={`mt-4 flex flex-col gap-3 ${tab === "CAROUSEL" ? "" : "hidden"}`}>
           <CarouselStudio
