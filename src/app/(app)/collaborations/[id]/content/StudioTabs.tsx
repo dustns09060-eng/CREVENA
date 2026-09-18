@@ -14,7 +14,7 @@ import { saveReelsProject, type ReelsProject } from "../reels/actions";
 import { buildReelsProjectFromCarousel } from "../reels/from-carousel";
 import { CarouselStudio } from "../carousel/CarouselStudio";
 import { saveCarouselProject, type CarouselCard, type CarouselCardRole, type CarouselProject } from "../carousel/actions";
-import { buildCarouselPlanPrompt } from "@/lib/ai/carousel-prompts";
+import { buildCarouselPlanPrompt, MAX_CAROUSEL_CARDS } from "@/lib/ai/carousel-prompts";
 import {
   buildRepurposeFromBlogPrompt,
   assembleInstagramText,
@@ -25,6 +25,10 @@ import {
 } from "@/lib/ai/prompts";
 import type { ContentSourceMeta } from "@/lib/content-source";
 import { SOURCE_PLATFORM_LABEL } from "@/lib/content-source";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { AlertTriangleIcon, CheckIcon } from "@/components/ui/Icon";
 import {
   SectionHeader,
   Accordion,
@@ -98,10 +102,11 @@ function RepurposeNotice({ sourceMeta, stale }: { sourceMeta?: ContentSourceMeta
   const label = SOURCE_PLATFORM_LABEL[sourceMeta.sourcePlatform];
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-[11px] text-zinc-400">{label}에서 생성됨</p>
+      <Badge tone="brand">{label}에서 생성됨</Badge>
       {stale && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
-          △ 원본 {withSubjectParticle(label)} 변경되었습니다. 다시 만들 수 있습니다.
+        <p className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+          <AlertTriangleIcon size={13} className="mt-0.5 shrink-0" />
+          원본 {withSubjectParticle(label)} 변경되었습니다. 다시 만들 수 있습니다.
         </p>
       )}
     </div>
@@ -128,22 +133,26 @@ function RepurposeBar({
       <p className="text-xs font-semibold text-zinc-500">다른 콘텐츠로 만들기</p>
       <div className="flex flex-wrap gap-2">
         {items.map((item) => (
-          <button
+          <Button
             key={item.target}
-            type="button"
+            variant="secondary"
+            size="sm"
+            className="rounded-full"
             onClick={item.onClick}
             disabled={!!item.disabled || repurposing !== null}
+            loading={repurposing === item.target}
+            loadingText={`${item.label} 만드는 중...`}
             title={item.reason}
-            className="rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-40"
           >
-            {repurposing === item.target ? `${item.label} 만드는 중...` : item.label}
-          </button>
+            {item.label}
+          </Button>
         ))}
       </div>
       {error && <p className="text-[11px] text-red-600">{error}</p>}
       {success && (
-        <p className="text-[11px] text-emerald-700">
-          ✓ {success.label} 콘텐츠가 생성되었습니다.{" "}
+        <p className="flex items-center gap-1 text-[11px] text-emerald-700">
+          <CheckIcon size={12} className="shrink-0" />
+          {success.label} 콘텐츠가 생성되었습니다.{" "}
           <button type="button" className="underline" onClick={() => onGoToSuccess(success.target)}>
             확인하기
           </button>
@@ -236,6 +245,36 @@ export function StudioTabs({
   const [localCarousel, setLocalCarousel] = useState(initialCarousel);
   const [localReels, setLocalReels] = useState(initialReels);
   const [remountNonce, setRemountNonce] = useState(0);
+  // STEP43 fix (found via real testing): CarouselStudio/ReelsStudio/
+  // PlatformPanel also save through their OWN native "저장" button, entirely
+  // independent of the repurpose flow above — that save calls
+  // router.refresh() itself, which re-fetches these `initialX` props from
+  // the server. Without re-syncing, localCarousel/etc stayed stuck at
+  // whatever they were when StudioTabs first mounted (e.g. undefined for a
+  // freshly-created collaboration), so "이 카드뉴스로 릴스 만들기" never
+  // appeared even after a real save+refresh. Mirrors the exact
+  // prop-changed-since-last-render comparison usePhotoManager.ts already
+  // uses for the same reason — not a new pattern in this codebase.
+  const [syncedInstagram, setSyncedInstagram] = useState(initialInstagram);
+  if (initialInstagram !== syncedInstagram) {
+    setSyncedInstagram(initialInstagram);
+    setLocalInstagram(initialInstagram);
+  }
+  const [syncedThreads, setSyncedThreads] = useState(initialThreads);
+  if (initialThreads !== syncedThreads) {
+    setSyncedThreads(initialThreads);
+    setLocalThreads(initialThreads);
+  }
+  const [syncedCarousel, setSyncedCarousel] = useState(initialCarousel);
+  if (initialCarousel !== syncedCarousel) {
+    setSyncedCarousel(initialCarousel);
+    setLocalCarousel(initialCarousel);
+  }
+  const [syncedReels, setSyncedReels] = useState(initialReels);
+  if (initialReels !== syncedReels) {
+    setSyncedReels(initialReels);
+    setLocalReels(initialReels);
+  }
 
   const [repurposing, setRepurposing] = useState<RepurposeTarget | null>(null);
   const repurposingRef = useRef(false);
@@ -602,7 +641,11 @@ export function StudioTabs({
               headlineSize: "medium",
             };
           })
-          .filter((c): c is CarouselCard => c !== null);
+          .filter((c): c is CarouselCard => c !== null)
+          // STEP43 item 33/71: same safety-net clamp as CarouselStudio's
+          // from-scratch generation — never more than MAX_CAROUSEL_CARDS,
+          // never padded to a minimum.
+          .slice(0, MAX_CAROUSEL_CARDS);
         if (cards.length === 0) throw new Error("AI가 유효한 카드를 만들지 못했습니다. 다시 시도해주세요.");
 
         const sourceMeta: ContentSourceMeta = {
@@ -785,26 +828,20 @@ export function StudioTabs({
             </p>
           )}
           <div className="flex items-center gap-2">
-            <button
+            <Button
               onClick={handleStartClick}
               disabled={pipelineRunning || checkingBudget || selectedCount === 0}
-              className="mt-2 min-h-[48px] flex-1 rounded-lg bg-zinc-900 px-5 py-3 text-base font-semibold text-white transition-opacity hover:bg-zinc-800 disabled:opacity-40"
+              loading={pipelineRunning || checkingBudget}
+              loadingText={pipelineRunning ? "콘텐츠 만드는 중..." : "크레딧 확인 중..."}
+              size="lg"
+              className="mt-2 flex-1"
             >
-              {pipelineRunning
-                ? "콘텐츠 만드는 중..."
-                : checkingBudget
-                  ? "크레딧 확인 중..."
-                  : budgetWarning
-                    ? "그래도 진행"
-                    : "AI 콘텐츠 만들기"}
-            </button>
+              {budgetWarning ? "그래도 진행" : "AI 콘텐츠 만들기"}
+            </Button>
             {budgetWarning && (
-              <button
-                onClick={() => setBudgetWarning(null)}
-                className="mt-2 min-h-[48px] rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-              >
+              <Button variant="secondary" size="lg" className="mt-2" onClick={() => setBudgetWarning(null)}>
                 취소
-              </button>
+              </Button>
             )}
           </div>
           {selectedCount > 0 && (
@@ -840,13 +877,15 @@ export function StudioTabs({
           title="결과 확인/편집"
           description="플랫폼별 결과를 확인하고 필요한 부분만 고쳐보세요. 각 결과 하단에서 가이드 충족 여부(✓/△/✕)를 바로 확인할 수 있습니다."
         />
-        <div className="mt-3 flex flex-wrap gap-1 overflow-x-auto border-b border-zinc-200">
+        <div className="mt-3 flex gap-1 overflow-x-auto border-b border-zinc-200">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`shrink-0 rounded-t-lg px-4 py-2 text-sm font-medium ${
-                tab === t.key ? "border-b-2 border-zinc-900 text-zinc-900" : "text-zinc-500 hover:text-zinc-900"
+              className={`shrink-0 rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+                tab === t.key
+                  ? "border-b-2 border-brand-600 text-brand-700"
+                  : "border-b-2 border-transparent text-zinc-500 hover:text-zinc-900"
               }`}
             >
               {t.label}
@@ -957,44 +996,33 @@ export function StudioTabs({
         </div>
       </section>
 
-      {repurposeConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-lg">
-            <p className="text-sm font-semibold text-zinc-900">이미 {repurposeConfirm.label} 콘텐츠가 있습니다</p>
-            <p className="mt-2 text-xs text-zinc-500">
-              기존 내용을 유지할까요, 방금 선택한 원본을 기준으로 새로 만들까요? 새로 만들어도 지금까지 작업한
-              내용은 사라지지 않고 새 결과로 교체됩니다.
-            </p>
-            <div className="mt-4 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => setRepurposeConfirm(null)}
-                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={() => setRepurposeConfirm(null)}
-                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-              >
-                기존 콘텐츠 유지
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const { run } = repurposeConfirm;
-                  setRepurposeConfirm(null);
-                  void run();
-                }}
-                className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-              >
-                새로 생성
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={!!repurposeConfirm}
+        onClose={() => setRepurposeConfirm(null)}
+        title={`이미 ${repurposeConfirm?.label ?? ""} 콘텐츠가 있습니다`}
+        description="기존 내용을 유지할까요, 방금 선택한 원본을 기준으로 새로 만들까요? 새로 만들어도 지금까지 작업한 내용은 사라지지 않고 새 결과로 교체됩니다."
+      >
+        <Button variant="ghost" onClick={() => setRepurposeConfirm(null)}>
+          취소
+        </Button>
+        <Button variant="secondary" onClick={() => setRepurposeConfirm(null)}>
+          기존 콘텐츠 유지
+        </Button>
+        {/* item 46: the overwrite action is deliberately NOT styled as the
+            solid brand/primary button — a destructive/replace action should
+            never be the one the user reaches for out of habit. */}
+        <Button
+          variant="secondary"
+          className="border-amber-300 text-amber-800 hover:bg-amber-50"
+          onClick={() => {
+            const confirm = repurposeConfirm;
+            setRepurposeConfirm(null);
+            if (confirm) void confirm.run();
+          }}
+        >
+          새로 생성
+        </Button>
+      </Modal>
     </div>
   );
 }

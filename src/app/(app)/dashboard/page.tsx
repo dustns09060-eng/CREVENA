@@ -3,6 +3,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { COLLABORATION_STATUS_LABELS } from "@/lib/collaboration-status";
 import { formatDDay } from "@/lib/dday";
 import { buildDeadlineNotifications } from "@/lib/notifications";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/States";
+import { AlertTriangleIcon, PlusIcon } from "@/components/ui/Icon";
 
 function getThisWeekRange(now: Date) {
   const day = now.getDay();
@@ -17,10 +22,10 @@ function getThisWeekRange(now: Date) {
 
 function DashboardCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4">
+    <Card className="p-4">
       <p className="text-sm text-zinc-500">{label}</p>
       <p className="mt-1 text-2xl font-bold text-zinc-900">{value}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -71,20 +76,30 @@ export default async function DashboardPage() {
     .slice(0, 5);
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-zinc-900">대시보드</h1>
+    <div className="mx-auto flex w-full max-w-6xl flex-col">
+      <PageHeader
+        title="대시보드"
+        description="지금 무엇을 해야 하는지 한눈에 확인하세요."
+        action={
+          <Link href="/collaborations/new">
+            <Button>
+              <PlusIcon size={16} /> 새 협찬 등록
+            </Button>
+          </Link>
+        }
+      />
 
       {collaborations.length === 0 && (
-        <div className="mt-4 flex flex-col items-start gap-3 rounded-xl border border-zinc-200 bg-white p-6">
-          <p className="text-sm text-zinc-600">
-            아직 등록된 협찬이 없습니다. 첫 협찬을 등록하고 시작해보세요.
-          </p>
-          <Link
-            href="/collaborations/new"
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-          >
-            협찬 등록하기
-          </Link>
+        <div className="mt-4">
+          <EmptyState
+            title="첫 협찬을 등록해보세요."
+            description="협찬 가이드와 사진을 등록하면 AI가 채널별 콘텐츠 제작을 도와드려요."
+            action={
+              <Link href="/collaborations/new">
+                <Button>협찬 등록하기</Button>
+              </Link>
+            }
+          />
         </div>
       )}
 
@@ -96,6 +111,7 @@ export default async function DashboardPage() {
               href={`/collaborations/${n.collaborationId}`}
               className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 hover:bg-amber-100"
             >
+              <AlertTriangleIcon size={14} className="shrink-0" />
               {n.message}
             </Link>
           ))}
@@ -112,7 +128,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <Card className="p-4">
           <h2 className="text-sm font-semibold text-zinc-900">최근 협찬</h2>
           {recentCollaborations.length === 0 ? (
             <p className="mt-3 text-sm text-zinc-500">등록된 협찬이 없습니다.</p>
@@ -133,9 +149,9 @@ export default async function DashboardPage() {
               ))}
             </ul>
           )}
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <Card className="p-4">
           <h2 className="text-sm font-semibold text-zinc-900">다가오는 마감</h2>
           {upcomingDeadlines.length === 0 ? (
             <p className="mt-3 text-sm text-zinc-500">다가오는 마감이 없습니다.</p>
@@ -156,7 +172,7 @@ export default async function DashboardPage() {
               ))}
             </ul>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

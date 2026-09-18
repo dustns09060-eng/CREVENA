@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import type { DeterministicGuideCheck, GuideCheckItem } from "@/lib/content-guide-check";
+import { CheckIcon, XIcon, AlertTriangleIcon, ChevronDownIcon, PlusIcon, SpinnerIcon } from "@/components/ui/Icon";
 
 export type { GuideCheckItem };
 
@@ -21,7 +22,7 @@ export function SectionHeader({
 }) {
   return (
     <div className="flex items-start gap-3">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold text-white">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">
         {step}
       </span>
       <div>
@@ -44,7 +45,7 @@ export function SaveStatusBadge({ state }: { state: SaveState }) {
   if (state === "saved") {
     return (
       <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
-        <span aria-hidden>✓</span> 저장됨
+        <CheckIcon size={13} aria-hidden /> 저장됨
       </span>
     );
   }
@@ -80,7 +81,7 @@ export function Toast({ message }: { message: string | null }) {
       role="status"
       className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white"
     >
-      <span aria-hidden>✓</span> {message}
+      <CheckIcon size={13} aria-hidden /> {message}
     </div>
   );
 }
@@ -100,10 +101,10 @@ export function PlatformStatusPill({ status }: { status: PlatformStatus }) {
   );
 }
 
-const GUIDE_ICON: Record<GuideCheckItem["state"], { icon: string; className: string }> = {
-  pass: { icon: "✓", className: "text-emerald-600" },
-  warn: { icon: "△", className: "text-amber-600" },
-  fail: { icon: "✕", className: "text-red-600" },
+const GUIDE_ICON: Record<GuideCheckItem["state"], { Icon: typeof CheckIcon; className: string }> = {
+  pass: { Icon: CheckIcon, className: "text-emerald-600" },
+  warn: { Icon: AlertTriangleIcon, className: "text-amber-600" },
+  fail: { Icon: XIcon, className: "text-red-600" },
 };
 
 // Turns the existing deterministic check (src/lib/content-guide-check.ts,
@@ -184,18 +185,16 @@ export function GuideCheckList({
     <div className="flex flex-col gap-2">
       {allSatisfied && (
         <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
-          <span aria-hidden>✓</span> 가이드 필수 항목 확인 완료
+          <CheckIcon size={14} aria-hidden /> 가이드 필수 항목 확인 완료
         </p>
       )}
       <ul className="flex flex-col gap-1">
         {items.map((item) => {
-          const { icon, className } = GUIDE_ICON[item.state];
+          const { Icon, className } = GUIDE_ICON[item.state];
           const suffix = GUIDE_STATE_SUFFIX[item.state];
           return (
             <li key={item.label} className="flex items-start gap-1.5 text-xs">
-              <span aria-hidden className={`font-semibold ${className}`}>
-                {icon}
-              </span>
+              <Icon size={13} aria-hidden className={`mt-0.5 shrink-0 ${className}`} />
               <span className="text-zinc-700">
                 {item.label}
                 {suffix && <span className={`ml-1 ${className}`}>({suffix})</span>}
@@ -236,8 +235,8 @@ export function PhotoUploadEmptyState({
       disabled={disabled}
       className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 px-6 py-10 text-center transition-colors hover:border-zinc-400 hover:bg-zinc-100 disabled:opacity-50"
     >
-      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-lg font-semibold text-white">
-        +
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-600 text-white">
+        <PlusIcon size={20} />
       </span>
       <span className="text-sm font-medium text-zinc-900">사진 추가</span>
       <span className="text-xs text-zinc-500">제품과 실제 사용 사진을 추가해주세요.</span>
@@ -271,9 +270,11 @@ export function Accordion({
           <span className="text-sm font-semibold text-zinc-900">{title}</span>
           {description && <span className="ml-2 text-xs text-zinc-400">{description}</span>}
         </span>
-        <span aria-hidden className={`text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`}>
-          ▾
-        </span>
+        <ChevronDownIcon
+          size={16}
+          aria-hidden
+          className={`shrink-0 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {open && <div className="border-t border-zinc-100 p-4 sm:p-5">{children}</div>}
     </div>
@@ -289,21 +290,25 @@ export type ProgressStep = {
   detail?: string;
 };
 
-const PROGRESS_ICON: Record<ProgressStepState, string> = {
-  pending: "○",
-  active: "◐",
-  done: "✓",
-  failed: "✕",
-  skipped: "–",
-};
-
 const PROGRESS_CLASS: Record<ProgressStepState, string> = {
   pending: "text-zinc-300",
-  active: "text-blue-600",
+  active: "text-brand-600",
   done: "text-emerald-600",
   failed: "text-red-600",
   skipped: "text-zinc-400",
 };
+
+function ProgressIcon({ state }: { state: ProgressStepState }) {
+  const cls = `shrink-0 ${PROGRESS_CLASS[state]}`;
+  if (state === "active") return <SpinnerIcon size={14} aria-hidden className={cls} />;
+  if (state === "done") return <CheckIcon size={14} aria-hidden className={cls} />;
+  if (state === "failed") return <XIcon size={14} aria-hidden className={cls} />;
+  return (
+    <span aria-hidden className={`inline-block w-3.5 text-center text-sm leading-none ${cls}`}>
+      {state === "skipped" ? "–" : "○"}
+    </span>
+  );
+}
 
 // STEP35.5 item 16: live progress list for the one-click pipeline
 // (가이드 분석 중... → 사진 분석 중... 3/10 → ... → 완료).
@@ -312,9 +317,7 @@ export function ProgressList({ steps }: { steps: ProgressStep[] }) {
     <ul className="flex flex-col gap-1.5">
       {steps.map((step) => (
         <li key={step.key} className="flex items-center gap-2 text-xs">
-          <span aria-hidden className={`w-4 text-center font-semibold ${PROGRESS_CLASS[step.state]}`}>
-            {PROGRESS_ICON[step.state]}
-          </span>
+          <ProgressIcon state={step.state} />
           <span className={step.state === "active" ? "font-medium text-zinc-900" : "text-zinc-600"}>
             {step.label}
             {step.detail ? ` ${step.detail}` : ""}

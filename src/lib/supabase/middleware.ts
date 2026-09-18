@@ -2,7 +2,13 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database";
 
-const PUBLIC_PATHS = ["/login"];
+// STEP43: "/" becomes a real public marketing landing page instead of an
+// unconditional redirect-to-dashboard, so logged-out visitors can actually
+// see it. Adding it here follows the exact same pattern already used for
+// /login — this is not new authorization logic, just widening which paths
+// don't require a session, and the existing `user && isPublicPath` rule
+// below still sends an already-logged-in visitor straight to /dashboard.
+const PUBLIC_PATHS = ["/login", "/"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

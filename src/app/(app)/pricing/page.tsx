@@ -1,6 +1,10 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PLAN_CONFIGS, normalizePlanTier, type PlanConfig } from "@/lib/plans";
 import { UpgradeButton } from "./UpgradeButton";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { CheckIcon, XIcon } from "@/components/ui/Icon";
 
 function formatPrice(krw: number) {
   return krw === 0 ? "무료" : `₩${krw.toLocaleString()}`;
@@ -11,9 +15,13 @@ function FeatureRow({ label, enabled }: { label: string; enabled: boolean }) {
     <div className="flex items-center justify-between py-1.5 text-sm">
       <span className="text-zinc-600">{label}</span>
       {enabled ? (
-        <span className="text-emerald-600">✓ 가능</span>
+        <span className="flex items-center gap-1 text-emerald-600">
+          <CheckIcon size={13} /> 가능
+        </span>
       ) : (
-        <span className="text-zinc-300">✗ 미제공</span>
+        <span className="flex items-center gap-1 text-zinc-300">
+          <XIcon size={13} /> 미제공
+        </span>
       )}
     </div>
   );
@@ -43,11 +51,11 @@ export default async function PricingPage() {
   const plans: PlanConfig[] = [PLAN_CONFIGS.FREE, PLAN_CONFIGS.BASIC, PLAN_CONFIGS.PRO];
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-zinc-900">요금제</h1>
-      <p className="mt-1 text-sm text-zinc-500">
-        AI 작업은 토큰 대신 이해하기 쉬운 크레딧으로 차감됩니다. 현재 결제는 테스트 환경에서만 동작합니다.
-      </p>
+    <div className="mx-auto w-full max-w-6xl">
+      <PageHeader
+        title="요금제"
+        description="AI 작업은 토큰 대신 이해하기 쉬운 크레딧으로 차감됩니다. 현재 결제는 테스트 환경에서만 동작합니다."
+      />
 
       <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         {plans.map((plan) => {
@@ -56,16 +64,12 @@ export default async function PricingPage() {
             <div
               key={plan.tier}
               className={`flex flex-col rounded-xl border bg-white p-5 ${
-                isCurrent ? "border-zinc-900 ring-1 ring-zinc-900" : "border-zinc-200"
+                isCurrent ? "border-brand-600 ring-1 ring-brand-600" : "border-zinc-200"
               }`}
             >
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-zinc-900">{plan.label}</h2>
-                {isCurrent && (
-                  <span className="rounded-full bg-zinc-900 px-2.5 py-0.5 text-xs font-medium text-white">
-                    현재 플랜
-                  </span>
-                )}
+                {isCurrent && <Badge tone="brand">현재 플랜</Badge>}
               </div>
 
               <p className="mt-2 text-2xl font-bold text-zinc-900">
@@ -112,12 +116,9 @@ export default async function PricingPage() {
 
               <div className="mt-5">
                 {isCurrent ? (
-                  <button
-                    disabled
-                    className="w-full rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-400"
-                  >
+                  <Button variant="secondary" disabled className="w-full">
                     현재 이용 중
-                  </button>
+                  </Button>
                 ) : (
                   <UpgradeButton
                     plan={plan.tier}

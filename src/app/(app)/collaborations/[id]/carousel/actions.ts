@@ -10,6 +10,11 @@ import type { ContentSourceMeta } from "@/lib/content-source";
 // row — same pattern as ReelsProject (../reels/actions.ts) and BlogMeta. No
 // dedicated carousel_projects table, and no new photo-ordering column: cards
 // just reference an existing collaboration_photos.id.
+
+// STEP43 item 33/71: MAX_CAROUSEL_CARDS lives in ai/carousel-prompts.ts, not
+// here — a "use server" file's compiler only allows exporting async
+// functions (server actions); a plain runtime constant here silently broke
+// every export of this module at build time (caught by `npm run build`).
 export type CarouselCardRole =
   | "cover"
   | "product"

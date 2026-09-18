@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { translateAuthError } from "@/lib/auth-error";
+import { Button } from "@/components/ui/Button";
 
 const CONFIRM_ERROR_MESSAGE =
   "이메일 인증 링크가 만료되었거나 이미 사용되었습니다. 다시 로그인해보시거나, 필요하면 재가입해주세요.";
@@ -13,11 +15,17 @@ function hasConfirmError() {
   return new URLSearchParams(window.location.search).has("confirm_error");
 }
 
-export default function LoginPage() {
+// STEP43: split out so useSearchParams (reads ?mode=signup from the landing
+// page's CTA) stays inside a Suspense boundary, per Next.js's requirement —
+// none of the actual auth logic below changed from the previous version.
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createSupabaseBrowserClient();
 
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup">(
+    searchParams.get("mode") === "signup" ? "signup" : "signin",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(() => (hasConfirmError() ? CONFIRM_ERROR_MESSAGE : null));
@@ -57,24 +65,24 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6"
-      >
-        <h1 className="text-xl font-bold text-zinc-900">CREVENA</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          {mode === "signin" ? "로그인" : "회원가입"}
+    <div className="flex flex-1 flex-col items-center justify-center px-4 py-12">
+      <Link href="/" className="mb-6 text-xl font-bold text-zinc-900">
+        CREVENA
+      </Link>
+      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6">
+        <p className="text-sm font-semibold text-zinc-900">{mode === "signin" ? "로그인" : "회원가입"}</p>
+        <p className="mt-1 text-xs text-zinc-400">
+          {mode === "signin" ? "다시 만나서 반가워요." : "무료로 바로 시작할 수 있어요."}
         </p>
 
-        <div className="mt-6 flex flex-col gap-3">
+        <div className="mt-5 flex flex-col gap-3">
           <input
             type="email"
             required
             placeholder="이메일"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+            className="min-h-[44px] rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
           />
           <input
             type="password"
@@ -83,20 +91,16 @@ export default function LoginPage() {
             placeholder="비밀번호"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+            className="min-h-[44px] rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
           />
         </div>
 
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         {notice && <p className="mt-3 text-sm text-emerald-600">{notice}</p>}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="mt-4 w-full rounded-lg bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {loading ? "처리중..." : mode === "signin" ? "로그인" : "가입하기"}
-        </button>
+        <Button type="submit" size="lg" loading={loading} loadingText="처리중..." className="mt-4 w-full">
+          {mode === "signin" ? "로그인" : "가입하기"}
+        </Button>
 
         <button
           type="button"
@@ -105,11 +109,19 @@ export default function LoginPage() {
             setError(null);
             setNotice(null);
           }}
-          className="mt-3 w-full text-center text-sm text-zinc-500 hover:text-zinc-900"
+          className="mt-3 min-h-[44px] w-full text-center text-sm text-zinc-500 hover:text-zinc-900"
         >
           {mode === "signin" ? "계정이 없나요? 회원가입" : "이미 계정이 있나요? 로그인"}
         </button>
       </form>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

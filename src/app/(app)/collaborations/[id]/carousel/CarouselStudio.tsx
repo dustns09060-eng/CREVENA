@@ -9,7 +9,12 @@ import {
   type CarouselTemplate,
   type CarouselAspectRatio,
 } from "./actions";
-import { buildCarouselPlanPrompt, parseJsonResponse, type CarouselPhotoSummary } from "@/lib/ai/carousel-prompts";
+import {
+  buildCarouselPlanPrompt,
+  parseJsonResponse,
+  MAX_CAROUSEL_CARDS,
+  type CarouselPhotoSummary,
+} from "@/lib/ai/carousel-prompts";
 import { renderCarouselCardToCanvas, renderCarouselCardToPngBlob, ASPECT_SIZES } from "./render";
 import { createZipBlob } from "@/lib/simple-zip";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
@@ -235,7 +240,13 @@ export function CarouselStudio({
             ...DEFAULT_PROJECT_META,
           };
         })
-        .filter((c): c is CarouselCard => c !== null);
+        .filter((c): c is CarouselCard => c !== null)
+        // STEP43 item 33/71: safety net on top of the schema's maxItems — a
+        // provider that ignores maxItems (or a photoId that fails the
+        // photoById check pushing the raw response over 10 before this
+        // filter) can still never produce more than MAX_CAROUSEL_CARDS.
+        // Never pads up to a minimum — only ever trims from the top.
+        .slice(0, MAX_CAROUSEL_CARDS);
 
       if (cards.length === 0) throw new Error("AI가 유효한 카드를 만들지 못했습니다. 다시 시도해주세요.");
 

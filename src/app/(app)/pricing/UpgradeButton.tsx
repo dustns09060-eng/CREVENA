@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { startPlanUpgrade } from "@/lib/billing/plan-payment";
 import type { PlanTier } from "@/lib/plans";
+import { Button } from "@/components/ui/Button";
 
 export function UpgradeButton({
   plan,
@@ -42,13 +43,9 @@ export function UpgradeButton({
 
   return (
     <div className="flex flex-col items-stretch gap-1">
-      <button
-        onClick={handleClick}
-        disabled={pending}
-        className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
-      >
-        {pending ? "처리 중..." : label}
-      </button>
+      <Button onClick={handleClick} disabled={pending} loading={pending} loadingText="처리 중..." className="w-full">
+        {label}
+      </Button>
       {message && <p className="text-center text-xs text-zinc-500">{message}</p>}
     </div>
   );

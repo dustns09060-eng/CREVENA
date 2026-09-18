@@ -6,6 +6,11 @@ import {
 } from "@/lib/collaboration-status";
 import { formatDDay } from "@/lib/dday";
 import type { CollaborationStatus } from "@/types/database";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState, ErrorState } from "@/components/ui/States";
+import { CheckIcon, PlusIcon } from "@/components/ui/Icon";
 
 const FINISHED_STATUSES: CollaborationStatus[] = ["COMPLETED", "PAID"];
 
@@ -54,16 +59,17 @@ export default async function CollaborationsPage({
   const { data: collaborations, error } = await query;
 
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-zinc-900">협찬관리</h1>
-        <Link
-          href="/collaborations/new"
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-        >
-          협찬 등록
-        </Link>
-      </div>
+    <div className="mx-auto flex w-full max-w-6xl flex-col">
+      <PageHeader
+        title="협찬관리"
+        action={
+          <Link href="/collaborations/new">
+            <Button>
+              <PlusIcon size={16} /> 협찬 등록
+            </Button>
+          </Link>
+        }
+      />
 
       <form className="mt-4 flex gap-2" action="">
         {status !== "ALL" && <input type="hidden" name="status" value={status} />}
@@ -72,23 +78,18 @@ export default async function CollaborationsPage({
           name="q"
           defaultValue={q}
           placeholder="브랜드명 또는 제품명 검색"
-          className="w-64 rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+          className="w-64 rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
         />
-        <button
-          type="submit"
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-        >
+        <Button type="submit" variant="secondary">
           검색
-        </button>
+        </Button>
       </form>
 
       <div className="mt-4 flex flex-wrap gap-1">
         <Link
           href={`/collaborations${buildQuery("ALL", q)}`}
           className={`rounded-full px-3 py-1 text-sm font-medium ${
-            status === "ALL"
-              ? "bg-zinc-900 text-white"
-              : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+            status === "ALL" ? "bg-brand-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
           }`}
         >
           전체
@@ -98,9 +99,7 @@ export default async function CollaborationsPage({
             key={s}
             href={`/collaborations${buildQuery(s, q)}`}
             className={`rounded-full px-3 py-1 text-sm font-medium ${
-              status === s
-                ? "bg-zinc-900 text-white"
-                : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+              status === s ? "bg-brand-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
             }`}
           >
             {COLLABORATION_STATUS_LABELS[s]}
@@ -110,11 +109,21 @@ export default async function CollaborationsPage({
 
       <div className="mt-6 overflow-x-auto rounded-xl border border-zinc-200 bg-white">
         {error ? (
-          <p className="p-6 text-sm text-red-600">
-            목록을 불러오지 못했습니다: {error.message}
-          </p>
+          <div className="p-6">
+            <ErrorState message={`목록을 불러오지 못했습니다: ${error.message}`} />
+          </div>
         ) : !collaborations || collaborations.length === 0 ? (
-          <p className="p-6 text-sm text-zinc-500">협찬 내역이 없습니다.</p>
+          <div className="p-2">
+            <EmptyState
+              title="협찬 내역이 없습니다."
+              description="첫 협찬을 등록하면 여기에 표시돼요."
+              action={
+                <Link href="/collaborations/new">
+                  <Button size="sm">협찬 등록하기</Button>
+                </Link>
+              }
+            />
+          </div>
         ) : (
           <table className="w-full min-w-[520px] text-left text-sm whitespace-nowrap">
             <thead className="border-b border-zinc-200 text-zinc-500">
@@ -154,29 +163,19 @@ export default async function CollaborationsPage({
                     </td>
                     <td className="p-0">
                       <Link href={`/collaborations/${c.id}`} className="block px-4 py-3">
-                        <span
-                          className={`rounded-full px-2 py-1 text-xs font-medium ${
-                            finished
-                              ? "bg-zinc-100 text-zinc-500"
-                              : "bg-zinc-100 text-zinc-700"
-                          }`}
-                        >
-                          {finished ? "✓ " : ""}
+                        <Badge tone={finished ? "success" : "neutral"}>
+                          {finished && <CheckIcon size={11} />}
                           {COLLABORATION_STATUS_LABELS[c.status]}
-                        </span>
+                        </Badge>
                       </Link>
                     </td>
                     <td className="p-0">
                       <Link href={`/collaborations/${c.id}`} className="block px-4 py-3">
-                        <span
-                          className={
-                            urgent
-                              ? "rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700"
-                              : "text-zinc-500"
-                          }
-                        >
-                          {formatDDay(c.content_deadline)}
-                        </span>
+                        {urgent ? (
+                          <Badge tone="danger">{formatDDay(c.content_deadline)}</Badge>
+                        ) : (
+                          <span className="text-zinc-500">{formatDDay(c.content_deadline)}</span>
+                        )}
                       </Link>
                     </td>
                   </tr>

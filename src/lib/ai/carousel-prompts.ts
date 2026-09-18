@@ -4,6 +4,19 @@ import { NO_FABRICATION_RULE, REVIEW_NOTE_LABELS, parseJsonResponse } from "./ph
 
 export { parseJsonResponse };
 
+// STEP43 item 33/71: single source of truth for the hard cap on newly
+// generated carousels. STEP41's prompt only ever said "5~10 cards, fewer if
+// content is thin" but nothing actually clamped the AI's response, and
+// STEP42's Blog→Carousel E2E test produced a real 12-card project. This only
+// bounds the maximum — there is still no forced minimum, so a collaboration
+// with 3 usable photos still gets 3 cards, never padded. Existing saved
+// projects (including that 12-card one) are never truncated by this
+// constant; it only applies at the moment new cards are built from a fresh
+// AI response (see CarouselStudio.tsx and StudioTabs.tsx's
+// repurposeBlogToCarousel). Lives here rather than carousel/actions.ts
+// because that file has "use server" and can only export async functions.
+export const MAX_CAROUSEL_CARDS = 10;
+
 // ---------------------------------------------------------------------------
 // STEP41 item 4/5/6: card composition. One call turns guide + photo analyses
 // + reviewNotes into an ordered card list (role/headline/body/photo), reusing
@@ -43,8 +56,15 @@ export const carouselPlanSchema: ResponseSchema = {
     properties: {
       cards: {
         type: "array",
+        // STEP43 item 33/71: maxItems is a real JSON Schema constraint on
+        // the forced tool-use response, not just prompt wording — the model
+        // literally cannot return more than 10 items through this schema.
+        // The client (CarouselStudio.tsx / StudioTabs.tsx) still clamps to
+        // MAX_CAROUSEL_CARDS again after parsing, so a provider that ignores
+        // maxItems can never produce an unbounded carousel either.
+        maxItems: 10,
         description:
-          "추천하는 카드 순서. photos 배열에 있는 id만 사용할 것 — 새 id를 지어내지 말 것. 사진 수와 실제 내용이 부족하면 5장보다 적게 만들어도 된다 — 억지로 5~10장을 채우지 마라.",
+          "추천하는 카드 순서. 최대 10장까지만. photos 배열에 있는 id만 사용할 것 — 새 id를 지어내지 말 것. 사진 수와 실제 내용이 부족하면 5장보다 적게 만들어도 된다 — 억지로 5~10장을 채우지 마라.",
         items: {
           type: "object",
           properties: {
@@ -71,7 +91,7 @@ export function buildCarouselPlanPrompt(input: CarouselPlanInput) {
     "headline과 body는 화면에 표시할 짧은 텍스트다 — 블로그 문단처럼 길게 쓰지 마라.",
     "\"아이가 좋아했어요\", \"효과를 느꼈어요\", \"재구매 예정\", \"흡수가 빨랐어요\" 같은 감정/효과/의향 표현은",
     "사용자입력경험에 실제로 없으면 절대 쓰지 마라. 사진을 보고 감정이나 효과를 추측하지 마라.",
-    "카드는 기본적으로 5~10장이 자연스럽지만, 사진 수나 실제 내용이 부족하면 억지로 채우지 말고 그보다 적게 만들어라.",
+    "카드는 최대 10장까지다. 기본적으로 5~10장이 자연스럽지만, 사진 수나 실제 내용이 부족하면 억지로 채우지 말고 그보다 적게 만들어라. 10장을 절대 넘기지 마라.",
     "photos 배열에 주어진 사진만 카드로 쓸 수 있다. 특별한 이유 없이 같은 사진을 여러 카드에 반복해서 쓰지 마라.",
     "가능하면 대표성이 가장 큰 사진을 role:\"cover\"인 첫 카드로 골라라.",
     "자연스러운 순서(cover → product/detail → usage → feature/experience → closing)로 배열하되, 실제 내용에 맞지 않으면 role을 억지로 다 채우지 않아도 된다.",
