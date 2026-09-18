@@ -96,12 +96,31 @@ export default async function CollaborationContentPage({
     .order("display_order", { ascending: true });
 
   const photoList = photos ?? [];
+  // STEP43.5: this is the ONLY place fullUrl/thumbUrl are produced for a
+  // photo — every consumer (Blog Studio, Naver Publish Assistant, Carousel
+  // renderer, Reels renderer) just reads .fullUrl/.thumbUrl, so preferring
+  // the edited derivative here (when one exists) is enough to make an XMP
+  // edit show up everywhere without touching any of those files. If signing
+  // the edited path unexpectedly fails (e.g. the object went missing), fall
+  // back to the original so the app never shows a broken image — but still
+  // log it, since a silent fallback shouldn't hide a real edited/original
+  // mismatch forever.
   const signedUrls = await Promise.all(
     photoList.map(async (p) => {
-      const [full, thumb] = await Promise.all([
-        supabase.storage.from(BUCKET).createSignedUrl(p.storage_path, 3600),
-        supabase.storage.from(BUCKET).createSignedUrl(p.thumbnail_path, 3600),
+      const effectiveFullPath = p.edited_storage_path ?? p.storage_path;
+      const effectiveThumbPath = p.edited_thumbnail_path ?? p.thumbnail_path;
+      let [full, thumb] = await Promise.all([
+        supabase.storage.from(BUCKET).createSignedUrl(effectiveFullPath, 3600),
+        supabase.storage.from(BUCKET).createSignedUrl(effectiveThumbPath, 3600),
       ]);
+      if (p.edited_storage_path && (full.error || !full.data)) {
+        console.error(`photo ${p.id}: edited_storage_path signed URL failed, falling back to original`, full.error);
+        full = await supabase.storage.from(BUCKET).createSignedUrl(p.storage_path, 3600);
+      }
+      if (p.edited_thumbnail_path && (thumb.error || !thumb.data)) {
+        console.error(`photo ${p.id}: edited_thumbnail_path signed URL failed, falling back to original`, thumb.error);
+        thumb = await supabase.storage.from(BUCKET).createSignedUrl(p.thumbnail_path, 3600);
+      }
       return { fullUrl: full.data?.signedUrl ?? "", thumbUrl: thumb.data?.signedUrl ?? "" };
     }),
   );
