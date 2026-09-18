@@ -4,6 +4,11 @@ import { CONTENT_STATUS_LABELS, CONTENT_STATUSES } from "@/lib/content-status";
 import { UPLOAD_PLATFORM_LABELS } from "@/lib/upload-platforms";
 import { CopyButton } from "@/components/CopyButton";
 import type { ContentPlatform } from "@/types/database";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState, ErrorState } from "@/components/ui/States";
 
 function platformLabel(platform: ContentPlatform) {
   return UPLOAD_PLATFORM_LABELS[platform] ?? platform;
@@ -86,8 +91,8 @@ export default async function ContentLibraryPage({
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-zinc-900">콘텐츠 보관함</h1>
+    <div className="mx-auto flex w-full max-w-6xl flex-col">
+      <PageHeader title="콘텐츠 보관함" />
 
       <form className="mt-4 flex flex-wrap items-center gap-2" action="">
         {brandFilter && <input type="hidden" name="brand" value={brandFilter} />}
@@ -98,7 +103,7 @@ export default async function ContentLibraryPage({
           name="q"
           defaultValue={params.q ?? ""}
           placeholder="브랜드명, 제품명, 콘텐츠 내용 검색"
-          className="w-72 rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+          className="w-72 rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
         />
         <label className="flex items-center gap-1.5 text-sm text-zinc-600">
           작성일
@@ -116,19 +121,16 @@ export default async function ContentLibraryPage({
           defaultValue={toFilter}
           className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm"
         />
-        <button
-          type="submit"
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-        >
+        <Button type="submit" variant="secondary">
           검색
-        </button>
+        </Button>
       </form>
 
       <div className="mt-3 flex flex-wrap gap-1">
         <Link
           href={`/content-library${buildQuery({ status: "" })}`}
           className={`rounded-full px-3 py-1 text-sm font-medium ${
-            !statusFilter ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+            !statusFilter ? "bg-brand-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
           }`}
         >
           전체 상태
@@ -139,7 +141,7 @@ export default async function ContentLibraryPage({
             href={`/content-library${buildQuery({ status: s })}`}
             className={`rounded-full px-3 py-1 text-sm font-medium ${
               statusFilter === s
-                ? "bg-zinc-900 text-white"
+                ? "bg-brand-600 text-white"
                 : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
             }`}
           >
@@ -152,7 +154,7 @@ export default async function ContentLibraryPage({
         <Link
           href={`/content-library${buildQuery({ platform: "" })}`}
           className={`rounded-full px-3 py-1 text-sm font-medium ${
-            !platformFilter ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+            !platformFilter ? "bg-brand-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
           }`}
         >
           전체 종류
@@ -163,7 +165,7 @@ export default async function ContentLibraryPage({
             href={`/content-library${buildQuery({ platform: p })}`}
             className={`rounded-full px-3 py-1 text-sm font-medium ${
               platformFilter === p
-                ? "bg-zinc-900 text-white"
+                ? "bg-brand-600 text-white"
                 : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
             }`}
           >
@@ -178,7 +180,7 @@ export default async function ContentLibraryPage({
             <Link
               href={`/content-library${buildQuery({ brand: "" })}`}
               className={`rounded-full px-3 py-1 text-sm font-medium ${
-                !brandFilter ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                !brandFilter ? "bg-brand-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
               }`}
             >
               전체 브랜드
@@ -189,7 +191,7 @@ export default async function ContentLibraryPage({
                 href={`/content-library${buildQuery({ brand: b })}`}
                 className={`rounded-full px-3 py-1 text-sm font-medium ${
                   brandFilter === b
-                    ? "bg-zinc-900 text-white"
+                    ? "bg-brand-600 text-white"
                     : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
                 }`}
               >
@@ -202,37 +204,30 @@ export default async function ContentLibraryPage({
 
       <div className="mt-6 flex flex-col gap-3">
         {error ? (
-          <p className="rounded-xl border border-zinc-200 bg-white p-6 text-sm text-red-600">
-            목록을 불러오지 못했습니다: {error.message}
-          </p>
+          <ErrorState message={`목록을 불러오지 못했습니다: ${error.message}`} />
         ) : items.length === 0 ? (
-          <p className="rounded-xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
-            저장된 콘텐츠가 없습니다.
-          </p>
+          <Card>
+            <EmptyState title="저장된 콘텐츠가 없습니다." />
+          </Card>
         ) : (
           items.map((item) => (
-            <div key={item.id} className="rounded-xl border border-zinc-200 bg-white p-4">
+            <Card key={item.id}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-zinc-900">
                     {item.brandName} · {item.productName}
                   </span>
-                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-                    {platformLabel(item.platform)}
-                  </span>
-                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-                    {CONTENT_STATUS_LABELS[item.status]}
-                  </span>
+                  <Badge>{platformLabel(item.platform)}</Badge>
+                  <Badge>{CONTENT_STATUS_LABELS[item.status]}</Badge>
                   <span className="text-xs text-zinc-400">
                     {new Date(item.created_at).toLocaleDateString("ko-KR")}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Link
-                    href={`/collaborations/${item.collaboration_id}/content`}
-                    className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-                  >
-                    보기 · 수정
+                  <Link href={`/collaborations/${item.collaboration_id}/content`}>
+                    <Button variant="secondary" size="sm">
+                      보기 · 수정
+                    </Button>
                   </Link>
                   <CopyButton text={item.body ?? ""} />
                 </div>
@@ -240,7 +235,7 @@ export default async function ContentLibraryPage({
               <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-sm text-zinc-600">
                 {item.body}
               </p>
-            </div>
+            </Card>
           ))
         )}
       </div>

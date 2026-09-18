@@ -31,6 +31,8 @@ import {
   type PlatformStatus,
 } from "./studio-ui";
 import type { ContentStatus } from "@/types/database";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 export type PlatformParts = InstagramParts | ThreadsParts;
 
@@ -366,13 +368,9 @@ export const PlatformPanel = forwardRef<
             </select>
           )}
           <div className="flex flex-col items-end gap-0.5">
-            <button
-              onClick={generate}
-              disabled={busy}
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-50"
-            >
-              {loading ? `${PLATFORM_LABELS[platform]} 작성 중...` : hasContent ? "다시 생성" : "생성"}
-            </button>
+            <Button onClick={generate} disabled={busy} loading={loading} loadingText={`${PLATFORM_LABELS[platform]} 작성 중...`}>
+              {hasContent ? "다시 생성" : "생성"}
+            </Button>
             <span className="text-[10px] text-zinc-400">{OPERATION_CREDIT_COST.CONTENT_GENERATE} 크레딧 사용</span>
           </div>
         </div>
@@ -392,15 +390,12 @@ export const PlatformPanel = forwardRef<
 
       {hasContent && (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4">
-            {platform === "INSTAGRAM_FEED" ? (
-              (["hook", "body", "cta", "hashtags"] as (keyof InstagramParts)[]).map((field, i, arr) => (
-                <div
-                  key={field}
-                  className={`flex flex-col gap-1 ${i < arr.length - 1 ? "border-b border-zinc-100 pb-3" : ""}`}
-                >
+          {platform === "INSTAGRAM_FEED" ? (
+            <div className="flex flex-col gap-3">
+              {(["hook", "body", "cta", "hashtags"] as (keyof InstagramParts)[]).map((field) => (
+                <div key={field} className="rounded-xl border border-zinc-200 bg-white p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-500">{FIELD_LABELS[field]}</span>
+                    <Badge tone={field === "hook" ? "brand" : "neutral"}>{FIELD_LABELS[field]}</Badge>
                     <button
                       onClick={() => regenerateField(field)}
                       disabled={busy}
@@ -418,18 +413,17 @@ export const PlatformPanel = forwardRef<
                       setParts((prev) => ({ ...(prev as InstagramParts), [field]: e.target.value }));
                       setDirty(true);
                     }}
-                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                    className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-brand-500"
                   />
                 </div>
-              ))
-            ) : (
-              (parts as ThreadsParts).posts.map((post, i, arr) => (
-                <div
-                  key={i}
-                  className={`flex flex-col gap-1 ${i < arr.length - 1 ? "border-b border-zinc-100 pb-3" : ""}`}
-                >
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {(parts as ThreadsParts).posts.map((post, i) => (
+                <div key={i} className="rounded-xl border border-zinc-200 bg-white p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-500">게시물 {i + 1}</span>
+                    <Badge tone="brand">Post {i + 1}</Badge>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => copyPost(i)}
@@ -459,35 +453,23 @@ export const PlatformPanel = forwardRef<
                       });
                       setDirty(true);
                     }}
-                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                    className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-brand-500"
                   />
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={save}
-              disabled={busy || !dirty}
-              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
-            >
-              {saving ? "저장 중..." : savedId ? "수정 저장" : "저장"}
-            </button>
-            <button
-              onClick={copy}
-              disabled={busy}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-            >
+            <Button size="sm" onClick={save} disabled={busy || !dirty} loading={saving} loadingText="저장 중...">
+              {savedId ? "수정 저장" : "저장"}
+            </Button>
+            <Button size="sm" variant="secondary" onClick={copy} disabled={busy}>
               {copied ? "복사됨" : "전체 복사"}
-            </button>
-            <button
-              onClick={runAiGuideCheck}
-              disabled={busy}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-            >
-              {checkingAi ? "검사 중..." : `AI 가이드 검사 (${OPERATION_CREDIT_COST.GUIDE_CHECK} 크레딧)`}
-            </button>
+            </Button>
+            <Button size="sm" variant="secondary" onClick={runAiGuideCheck} disabled={busy} loading={checkingAi} loadingText="검사 중...">
+              {`AI 가이드 검사 (${OPERATION_CREDIT_COST.GUIDE_CHECK} 크레딧)`}
+            </Button>
             <Toast message={toastMessage} />
           </div>
 

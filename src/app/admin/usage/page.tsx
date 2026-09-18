@@ -2,6 +2,10 @@ import { requireAdmin } from "@/lib/admin/guard";
 import { computeUsageReport, type UsageCategory } from "@/lib/admin/usage-stats";
 import { USD_TO_KRW_ESTIMATE } from "@/lib/ai/pricing";
 import type { AdminUsageGroupedRow } from "@/types/database";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { ErrorState } from "@/components/ui/States";
+import { AlertTriangleIcon } from "@/components/ui/Icon";
 
 const CATEGORY_LABELS: Record<UsageCategory, string> = {
   image_analysis: "사진 분석",
@@ -17,13 +21,13 @@ function krw(n: number) {
   return `₩${Math.round(n * USD_TO_KRW_ESTIMATE).toLocaleString()}`;
 }
 
-function Card({ label, usdValue }: { label: string; usdValue: number }) {
+function StatCard({ label, usdValue }: { label: string; usdValue: number }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4">
+    <Card className="p-4">
       <p className="text-sm text-zinc-500">{label}</p>
       <p className="mt-1 text-xl font-bold text-zinc-900">{usd(usdValue)}</p>
       <p className="text-xs text-zinc-400">약 {krw(usdValue)} (환율 추정치)</p>
-    </div>
+    </Card>
   );
 }
 
@@ -45,8 +49,10 @@ export default async function AdminUsagePage() {
   if (error) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-zinc-900">AI 사용량 / 비용</h1>
-        <p className="mt-4 text-sm text-red-600">데이터를 불러오지 못했습니다: {error.message}</p>
+        <PageHeader title="AI 사용량 / 비용" />
+        <div className="mt-4">
+          <ErrorState message={`데이터를 불러오지 못했습니다: ${error.message}`} />
+        </div>
       </div>
     );
   }
@@ -56,27 +62,28 @@ export default async function AdminUsagePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-zinc-900">AI 사용량 / 비용</h1>
+      <PageHeader title="AI 사용량 / 비용" />
       {!report.overall.allVerified && (
-        <p className="mt-2 text-sm text-amber-600">
-          ⚠ 일부 모델의 가격이 src/lib/ai/pricing.ts에 등록되어 있지 않아 해당 호출은 비용 $0으로 집계됩니다. 확인이
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          <AlertTriangleIcon size={14} className="shrink-0" />
+          일부 모델의 가격이 src/lib/ai/pricing.ts에 등록되어 있지 않아 해당 호출은 비용 $0으로 집계됩니다. 확인이
           필요합니다.
-        </p>
+        </div>
       )}
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card label="오늘 예상 AI 비용" usdValue={report.today.costUsd} />
-        <Card label="이번 달 예상 AI 비용" usdValue={report.overall.costUsd} />
-        <Card label="사용자 1명당 평균 AI 비용 (이번 달)" usdValue={report.avgCostPerUser} />
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <StatCard label="오늘 예상 AI 비용" usdValue={report.today.costUsd} />
+        <StatCard label="이번 달 예상 AI 비용" usdValue={report.overall.costUsd} />
+        <StatCard label="사용자 1명당 평균 AI 비용 (이번 달)" usdValue={report.avgCostPerUser} />
+        <Card className="p-4">
           <p className="text-sm text-zinc-500">이번 달 총 사용 크레딧</p>
           <p className="mt-1 text-xl font-bold text-zinc-900">{report.overall.creditsUsed.toLocaleString()}</p>
           <p className="text-xs text-zinc-400">STEP24 이전 호출은 크레딧 값이 없어 0으로 집계</p>
-        </div>
+        </Card>
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-zinc-200 bg-white p-4">
+        <Card>
           <h2 className="text-sm font-semibold text-zinc-900">기능별 AI 비용 (이번 달)</h2>
           <table className="mt-3 w-full text-left text-sm">
             <thead className="border-b border-zinc-200 text-zinc-500">
@@ -104,9 +111,9 @@ export default async function AdminUsagePage() {
               })}
             </tbody>
           </table>
-        </section>
+        </Card>
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-4">
+        <Card>
           <h2 className="text-sm font-semibold text-zinc-900">모델별 AI 비용 (이번 달)</h2>
           <table className="mt-3 w-full text-left text-sm">
             <thead className="border-b border-zinc-200 text-zinc-500">
@@ -130,48 +137,50 @@ export default async function AdminUsagePage() {
               ))}
             </tbody>
           </table>
-        </section>
+        </Card>
       </div>
 
-      <section className="mt-6 rounded-xl border border-zinc-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-zinc-900">비용 상위 사용자 (이번 달, ADMIN 전용)</h2>
+      <Card className="mt-6 p-0">
+        <h2 className="px-4 pt-4 text-sm font-semibold text-zinc-900 sm:px-5 sm:pt-5">
+          비용 상위 사용자 (이번 달, ADMIN 전용)
+        </h2>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[600px] text-left text-sm whitespace-nowrap">
             <thead className="border-b border-zinc-200 text-zinc-500">
               <tr>
-                <th className="px-3 py-2 font-medium">이메일</th>
-                <th className="px-3 py-2 font-medium">호출 수</th>
-                <th className="px-3 py-2 font-medium">실패</th>
-                <th className="px-3 py-2 font-medium">입력 토큰</th>
-                <th className="px-3 py-2 font-medium">출력 토큰</th>
-                <th className="px-3 py-2 font-medium">크레딧</th>
-                <th className="px-3 py-2 font-medium">예상 비용</th>
+                <th className="px-4 py-3 font-medium">이메일</th>
+                <th className="px-4 py-3 font-medium">호출 수</th>
+                <th className="px-4 py-3 font-medium">실패</th>
+                <th className="px-4 py-3 font-medium">입력 토큰</th>
+                <th className="px-4 py-3 font-medium">출력 토큰</th>
+                <th className="px-4 py-3 font-medium">크레딧</th>
+                <th className="px-4 py-3 font-medium">예상 비용</th>
               </tr>
             </thead>
             <tbody>
               {report.topUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-4 text-center text-zinc-400">
+                  <td colSpan={7} className="px-4 py-4 text-center text-zinc-400">
                     이번 달 AI 호출 기록이 없습니다.
                   </td>
                 </tr>
               ) : (
                 report.topUsers.map((u) => (
                   <tr key={u.userId} className="border-b border-zinc-100 last:border-0">
-                    <td className="px-3 py-2 text-zinc-900">{u.email}</td>
-                    <td className="px-3 py-2 text-zinc-700">{u.callCount}</td>
-                    <td className="px-3 py-2 text-zinc-700">{u.failCount}</td>
-                    <td className="px-3 py-2 text-zinc-700">{u.inputTokens.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-zinc-700">{u.outputTokens.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-zinc-700">{u.creditsUsed}</td>
-                    <td className="px-3 py-2 font-medium text-zinc-900">{usd(u.costUsd)}</td>
+                    <td className="px-4 py-3 text-zinc-900">{u.email}</td>
+                    <td className="px-4 py-3 text-zinc-700">{u.callCount}</td>
+                    <td className="px-4 py-3 text-zinc-700">{u.failCount}</td>
+                    <td className="px-4 py-3 text-zinc-700">{u.inputTokens.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-zinc-700">{u.outputTokens.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-zinc-700">{u.creditsUsed}</td>
+                    <td className="px-4 py-3 font-medium text-zinc-900">{usd(u.costUsd)}</td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

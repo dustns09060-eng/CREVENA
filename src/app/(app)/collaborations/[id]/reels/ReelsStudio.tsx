@@ -9,6 +9,8 @@ import { renderReelsToMp4, type RenderProgress } from "./render";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
 import type { ReviewNotes, StyleSample } from "@/lib/ai/prompts";
 import type { CollaborationPhoto } from "@/types/database";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 type PhotoWithUrl = CollaborationPhoto & { fullUrl: string; thumbUrl: string };
 
@@ -447,9 +449,10 @@ export function ReelsStudio({
         )}
       </div>
 
-      {/* AI 구성 */}
+      {/* AI 구성 — 1단계: 장면 구성. MP4 만들기(2단계)와는 다른 작업임을 배지로 구분 */}
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
-        <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="brand">1단계 · 장면 구성</Badge>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-zinc-500">목표 길이</span>
           {DURATION_OPTIONS.map((d) => (
             <button
@@ -457,7 +460,7 @@ export function ReelsStudio({
               type="button"
               onClick={() => setTargetDuration(d)}
               className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                targetDuration === d ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 text-zinc-600"
+                targetDuration === d ? "border-brand-600 bg-brand-600 text-white" : "border-zinc-300 text-zinc-600"
               }`}
             >
               {d}초
@@ -471,14 +474,9 @@ export function ReelsStudio({
           </p>
         )}
         <div className="mt-2 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleGeneratePlan}
-            disabled={planning || readyMediaCount === 0}
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-          >
-            {planning ? "구성 만드는 중..." : project ? "AI 구성 다시 만들기" : "AI 릴스 만들기"}
-          </button>
+          <Button onClick={handleGeneratePlan} disabled={planning || readyMediaCount === 0} loading={planning} loadingText="구성 만드는 중...">
+            {project ? "AI 구성 다시 만들기" : "AI 릴스 만들기"}
+          </Button>
           <span className="text-[11px] text-zinc-400">{OPERATION_CREDIT_COST.REELS_PLAN} 크레딧 사용</span>
         </div>
         {readyMediaCount === 0 && (
@@ -616,14 +614,9 @@ export function ReelsStudio({
               </div>
             </div>
             <div className="flex items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPlayIndex(playIndex === null ? 0 : null)}
-                disabled={includedScenes.length === 0}
-                className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
-              >
+              <Button size="sm" variant="secondary" onClick={() => setPlayIndex(playIndex === null ? 0 : null)} disabled={includedScenes.length === 0}>
                 {playIndex === null ? "▶ 재생" : "■ 정지"}
-              </button>
+              </Button>
               <span className="text-[11px] text-zinc-400">총 {totalDuration.toFixed(1)}초</span>
             </div>
 
@@ -635,7 +628,7 @@ export function ReelsStudio({
                     key={p}
                     onClick={() => updateCaptionStyle({ preset: p })}
                     className={`rounded-full border px-2.5 py-1 text-[11px] ${
-                      captionStyle.preset === p ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300"
+                      captionStyle.preset === p ? "border-brand-600 bg-brand-600 text-white" : "border-zinc-300"
                     }`}
                   >
                     {CAPTION_PRESET_LABEL[p]}
@@ -648,7 +641,7 @@ export function ReelsStudio({
                     key={p}
                     onClick={() => updateCaptionStyle({ position: p })}
                     className={`rounded-full border px-2.5 py-1 text-[11px] ${
-                      captionStyle.position === p ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300"
+                      captionStyle.position === p ? "border-brand-600 bg-brand-600 text-white" : "border-zinc-300"
                     }`}
                   >
                     {POSITION_LABEL[p]}
@@ -661,7 +654,7 @@ export function ReelsStudio({
                     key={s}
                     onClick={() => updateCaptionStyle({ size: s })}
                     className={`rounded-full border px-2.5 py-1 text-[11px] ${
-                      captionStyle.size === s ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300"
+                      captionStyle.size === s ? "border-brand-600 bg-brand-600 text-white" : "border-zinc-300"
                     }`}
                   >
                     {SIZE_LABEL[s]}
@@ -670,20 +663,15 @@ export function ReelsStudio({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || !libraryDirty}
-              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
-            >
-              {saving ? "저장 중..." : "저장"}
-            </button>
+            <Button size="sm" variant="secondary" onClick={handleSave} disabled={saving || !libraryDirty} loading={saving} loadingText="저장 중...">
+              저장
+            </Button>
 
             <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-              <p className="text-xs font-semibold text-zinc-500">MP4 만들기 (베타)</p>
+              <Badge tone="brand">2단계 · MP4 만들기</Badge>
               <p className="text-[11px] text-zinc-400">
                 이 브라우저에서 직접 영상을 만듭니다 (서버 업로드 없음). 오디오는 아직 지원하지 않아 무음으로
-                만들어집니다.
+                만들어집니다. 위 장면 구성(1단계)과는 별개의 단계로, 장면을 먼저 완성한 뒤 눌러주세요.
               </p>
               {renderStale && (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
@@ -695,22 +683,18 @@ export function ReelsStudio({
                   {renderError}
                 </p>
               )}
-              <button
-                type="button"
+              <Button
+                size="sm"
+                className="self-start"
                 onClick={handleRender}
                 disabled={renderState === "rendering" || includedScenes.length === 0}
-                className="self-start rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+                loading={renderState === "rendering"}
+                loadingText={`렌더링 중... (${renderProgress ? renderProgress.sceneIndex + 1 : 0}/${includedScenes.length}${
+                  renderProgress?.stage === "finalizing" ? " · 마무리 중" : ""
+                })`}
               >
-                {renderState === "rendering"
-                  ? `렌더링 중... (${renderProgress ? renderProgress.sceneIndex + 1 : 0}/${includedScenes.length}${
-                      renderProgress?.stage === "finalizing" ? " · 마무리 중" : ""
-                    })`
-                  : renderState === "done" && !renderStale
-                    ? "MP4 다시 만들기"
-                    : renderError
-                      ? "다시 시도"
-                      : "MP4 만들기"}
-              </button>
+                {renderState === "done" && !renderStale ? "MP4 다시 만들기" : renderError ? "다시 시도" : "MP4 만들기"}
+              </Button>
               {renderState === "done" && renderedUrl && !renderStale && (
                 <a
                   href={renderedUrl}

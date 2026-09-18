@@ -1,9 +1,10 @@
 import { CollaborationForm } from "./CollaborationForm";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default function NewCollaborationPage() {
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-zinc-900">협찬 등록</h1>
+    <div className="mx-auto flex w-full max-w-3xl flex-col">
+      <PageHeader title="협찬 등록" description="새로운 협찬 정보를 입력해주세요." />
       <CollaborationForm />
     </div>
   );

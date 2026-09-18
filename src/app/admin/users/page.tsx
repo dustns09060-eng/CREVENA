@@ -2,6 +2,10 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/admin/guard";
 import { getAiLimitsForPlan } from "@/lib/ai/plan-limits";
 import type { AdminUserListRow } from "@/types/database";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState, ErrorState } from "@/components/ui/States";
 
 const PLAN_FILTERS = ["FREE", "BASIC", "PRO"] as const;
 const ACTIVE_FILTERS = ["ACTIVE", "INACTIVE"] as const;
@@ -41,7 +45,7 @@ export default async function AdminUsersPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-zinc-900">사용자 관리</h1>
+      <PageHeader title="사용자 관리" />
 
       <form className="mt-4 flex flex-wrap gap-2" action="">
         {plan && <input type="hidden" name="plan" value={plan} />}
@@ -51,17 +55,17 @@ export default async function AdminUsersPage({
           name="q"
           defaultValue={q}
           placeholder="이메일 검색"
-          className="w-64 rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+          className="w-64 rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
         />
-        <button type="submit" className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
+        <Button type="submit" variant="secondary">
           검색
-        </button>
+        </Button>
       </form>
 
       <div className="mt-3 flex flex-wrap gap-1">
         <Link
           href={`/admin/users${buildQuery({ plan: "" }, { q, plan, active })}`}
-          className={`rounded-full px-3 py-1 text-sm font-medium ${!plan ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
+          className={`rounded-full px-3 py-1 text-sm font-medium ${!plan ? "bg-brand-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
         >
           전체 플랜
         </Link>
@@ -69,7 +73,7 @@ export default async function AdminUsersPage({
           <Link
             key={p}
             href={`/admin/users${buildQuery({ plan: p }, { q, plan, active })}`}
-            className={`rounded-full px-3 py-1 text-sm font-medium ${plan === p ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
+            className={`rounded-full px-3 py-1 text-sm font-medium ${plan === p ? "bg-brand-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
           >
             {p}
           </Link>
@@ -79,7 +83,7 @@ export default async function AdminUsersPage({
       <div className="mt-2 flex flex-wrap gap-1">
         <Link
           href={`/admin/users${buildQuery({ active: "" }, { q, plan, active })}`}
-          className={`rounded-full px-3 py-1 text-sm font-medium ${!active ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
+          className={`rounded-full px-3 py-1 text-sm font-medium ${!active ? "bg-brand-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
         >
           전체 상태
         </Link>
@@ -87,7 +91,7 @@ export default async function AdminUsersPage({
           <Link
             key={a}
             href={`/admin/users${buildQuery({ active: a }, { q, plan, active })}`}
-            className={`rounded-full px-3 py-1 text-sm font-medium ${active === a ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
+            className={`rounded-full px-3 py-1 text-sm font-medium ${active === a ? "bg-brand-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
           >
             {a === "ACTIVE" ? "활성(30일)" : "비활성"}
           </Link>
@@ -96,9 +100,13 @@ export default async function AdminUsersPage({
 
       <div className="mt-6 overflow-x-auto rounded-xl border border-zinc-200 bg-white">
         {error ? (
-          <p className="p-6 text-sm text-red-600">목록을 불러오지 못했습니다: {error.message}</p>
+          <div className="p-6">
+            <ErrorState message={`목록을 불러오지 못했습니다: ${error.message}`} />
+          </div>
         ) : rows.length === 0 ? (
-          <p className="p-6 text-sm text-zinc-500">조건에 맞는 사용자가 없습니다.</p>
+          <div className="p-2">
+            <EmptyState title="조건에 맞는 사용자가 없습니다." />
+          </div>
         ) : (
           <table className="w-full min-w-[860px] text-left text-sm whitespace-nowrap">
             <thead className="border-b border-zinc-200 text-zinc-500">
@@ -132,15 +140,11 @@ export default async function AdminUsersPage({
                       {isNeverActive(u.last_active_at) ? "-" : new Date(u.last_active_at).toLocaleDateString("ko-KR")}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-                        {u.plan_tier}
-                      </span>
+                      <Badge>{u.plan_tier}</Badge>
                     </td>
                     <td className="px-4 py-3">
                       {u.role === "ADMIN" ? (
-                        <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
-                          ADMIN
-                        </span>
+                        <Badge tone="brand">ADMIN</Badge>
                       ) : (
                         <span className="text-zinc-500">USER</span>
                       )}

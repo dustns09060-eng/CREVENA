@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getPlanConfig, normalizePlanTier } from "@/lib/plans";
 import { BillingActions } from "./BillingActions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 
 const STATUS_LABELS: Record<string, string> = {
   NONE: "구독 없음",
@@ -56,13 +59,16 @@ export default async function BillingSettingsPage() {
   const scheduledPlan = profile?.scheduled_plan ?? null;
 
   return (
-    <div>
+    <div className="mx-auto flex w-full max-w-6xl flex-col">
       <Link href="/settings" className="text-sm text-zinc-500 hover:text-zinc-900">
         ← 설정
       </Link>
-      <h1 className="mt-2 text-2xl font-bold text-zinc-900">결제 내역</h1>
 
-      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-4">
+      <div className="mt-2">
+        <PageHeader title="결제 내역" />
+      </div>
+
+      <Card className="mt-6">
         <h2 className="text-sm font-semibold text-zinc-900">현재 구독</h2>
         <div className="mt-3 flex flex-col gap-2 text-sm">
           <div className="flex justify-between border-b border-zinc-100 py-2">
@@ -103,42 +109,42 @@ export default async function BillingSettingsPage() {
           cancelAtPeriodEnd={cancelAtPeriodEnd}
           scheduledPlan={scheduledPlan}
         />
-      </div>
+      </Card>
 
-      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-zinc-900">최근 결제 내역</h2>
+      <Card className="mt-6 p-0">
+        <h2 className="px-4 pt-4 text-sm font-semibold text-zinc-900 sm:px-5 sm:pt-5">최근 결제 내역</h2>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[480px] text-left text-sm whitespace-nowrap">
             <thead className="border-b border-zinc-200 text-zinc-500">
               <tr>
-                <th className="px-3 py-2 font-medium">날짜</th>
-                <th className="px-3 py-2 font-medium">구분</th>
-                <th className="px-3 py-2 font-medium">플랜</th>
-                <th className="px-3 py-2 font-medium">금액</th>
-                <th className="px-3 py-2 font-medium">결과</th>
+                <th className="px-4 py-3 font-medium">날짜</th>
+                <th className="px-4 py-3 font-medium">구분</th>
+                <th className="px-4 py-3 font-medium">플랜</th>
+                <th className="px-4 py-3 font-medium">금액</th>
+                <th className="px-4 py-3 font-medium">결과</th>
               </tr>
             </thead>
             <tbody>
               {!payments || payments.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-center text-zinc-400">
+                  <td colSpan={5} className="px-4 py-4 text-center text-zinc-400">
                     결제 내역이 없습니다.
                   </td>
                 </tr>
               ) : (
                 payments.map((p) => (
                   <tr key={p.id} className="border-b border-zinc-100 last:border-0">
-                    <td className="px-3 py-2 text-zinc-500">{formatDate(p.created_at)}</td>
-                    <td className="px-3 py-2 text-zinc-600">{p.kind === "RECURRING" ? "정기결제" : "최초결제"}</td>
-                    <td className="px-3 py-2 text-zinc-600">{p.plan}</td>
-                    <td className="px-3 py-2 text-zinc-900">₩{p.amount.toLocaleString()}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-4 py-3 text-zinc-500">{formatDate(p.created_at)}</td>
+                    <td className="px-4 py-3 text-zinc-600">{p.kind === "RECURRING" ? "정기결제" : "최초결제"}</td>
+                    <td className="px-4 py-3 text-zinc-600">{p.plan}</td>
+                    <td className="px-4 py-3 text-zinc-900">₩{p.amount.toLocaleString()}</td>
+                    <td className="px-4 py-3">
                       {p.status === "PAID" ? (
-                        <span className="text-emerald-600">성공</span>
+                        <Badge tone="success">성공</Badge>
                       ) : p.status === "FAILED" ? (
-                        <span className="text-red-600">실패</span>
+                        <Badge tone="danger">실패</Badge>
                       ) : (
-                        <span className="text-amber-600">처리중</span>
+                        <Badge tone="warning">처리중</Badge>
                       )}
                     </td>
                   </tr>
@@ -147,34 +153,34 @@ export default async function BillingSettingsPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
       {refunds && refunds.length > 0 && (
-        <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-zinc-900">환불 내역</h2>
+        <Card className="mt-6 p-0">
+          <h2 className="px-4 pt-4 text-sm font-semibold text-zinc-900 sm:px-5 sm:pt-5">환불 내역</h2>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[420px] text-left text-sm whitespace-nowrap">
               <thead className="border-b border-zinc-200 text-zinc-500">
                 <tr>
-                  <th className="px-3 py-2 font-medium">날짜</th>
-                  <th className="px-3 py-2 font-medium">환불 금액</th>
-                  <th className="px-3 py-2 font-medium">사유</th>
-                  <th className="px-3 py-2 font-medium">상태</th>
+                  <th className="px-4 py-3 font-medium">날짜</th>
+                  <th className="px-4 py-3 font-medium">환불 금액</th>
+                  <th className="px-4 py-3 font-medium">사유</th>
+                  <th className="px-4 py-3 font-medium">상태</th>
                 </tr>
               </thead>
               <tbody>
                 {refunds.map((r) => (
                   <tr key={r.id} className="border-b border-zinc-100 last:border-0">
-                    <td className="px-3 py-2 text-zinc-500">{formatDate(r.created_at)}</td>
-                    <td className="px-3 py-2 text-zinc-900">₩{r.refund_amount.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-zinc-600">{r.reason || "-"}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-4 py-3 text-zinc-500">{formatDate(r.created_at)}</td>
+                    <td className="px-4 py-3 text-zinc-900">₩{r.refund_amount.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-zinc-600">{r.reason || "-"}</td>
+                    <td className="px-4 py-3">
                       {r.status === "SUCCEEDED" ? (
-                        <span className="text-emerald-600">완료</span>
+                        <Badge tone="success">완료</Badge>
                       ) : r.status === "FAILED" ? (
-                        <span className="text-red-600">실패</span>
+                        <Badge tone="danger">실패</Badge>
                       ) : (
-                        <span className="text-amber-600">처리중</span>
+                        <Badge tone="warning">처리중</Badge>
                       )}
                     </td>
                   </tr>
@@ -182,15 +188,15 @@ export default async function BillingSettingsPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
 
-      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-4">
+      <Card className="mt-6">
         <h2 className="text-sm font-semibold text-zinc-900">환불이 필요하신가요?</h2>
         <p className="mt-1 text-sm text-zinc-500">
           환불은 직접 실행할 수 없으며, 고객센터로 문의해주시면 결제 내역을 확인 후 도와드립니다.
         </p>
-      </div>
+      </Card>
     </div>
   );
 }

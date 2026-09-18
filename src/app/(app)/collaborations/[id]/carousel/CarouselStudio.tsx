@@ -23,6 +23,8 @@ import { checkAgainstGuideAnalysis, checkContentDeterministic } from "@/lib/cont
 import { GuideCheckList, buildDeterministicGuideItems } from "../content/studio-ui";
 import type { GuideAnalysis } from "@/lib/ai/guide-analysis-prompts";
 import type { CollaborationPhoto } from "@/types/database";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 type PhotoWithUrl = CollaborationPhoto & { fullUrl: string; thumbUrl: string };
 
@@ -433,14 +435,9 @@ export function CarouselStudio({
       )}
 
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={handleGeneratePlan}
-          disabled={planning || analyzedPhotoCount === 0}
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-        >
-          {planning ? "카드 구성 생성 중..." : project ? "AI 카드 구성 다시 만들기" : "AI 카드뉴스 만들기"}
-        </button>
+        <Button onClick={handleGeneratePlan} disabled={planning || analyzedPhotoCount === 0} loading={planning} loadingText="카드 구성 생성 중...">
+          {project ? "AI 카드 구성 다시 만들기" : "AI 카드뉴스 만들기"}
+        </Button>
         <span className="text-[11px] text-zinc-400">{OPERATION_CREDIT_COST.CAROUSEL_PLAN} 크레딧 사용</span>
       </div>
 
@@ -456,7 +453,7 @@ export function CarouselStudio({
                   onClick={() => setTemplate(t.key)}
                   title={t.description}
                   className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
-                    project.template === t.key ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 text-zinc-700"
+                    project.template === t.key ? "border-brand-600 bg-brand-600 text-white" : "border-zinc-300 text-zinc-700"
                   }`}
                 >
                   {t.label}
@@ -471,7 +468,7 @@ export function CarouselStudio({
                   type="button"
                   onClick={() => setAspectRatio(a.key)}
                   className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
-                    project.aspectRatio === a.key ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 text-zinc-700"
+                    project.aspectRatio === a.key ? "border-brand-600 bg-brand-600 text-white" : "border-zinc-300 text-zinc-700"
                   }`}
                 >
                   {a.label}
@@ -490,8 +487,9 @@ export function CarouselStudio({
                   </div>
                   <div className="flex flex-1 flex-col gap-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-zinc-500">
-                        {i + 1}/{project.cards.length} · {ROLE_LABEL[card.role]}
+                      <span className="flex items-center gap-1.5 text-xs font-semibold text-zinc-500">
+                        {i + 1}/{project.cards.length}
+                        <Badge tone="neutral">{ROLE_LABEL[card.role]}</Badge>
                       </span>
                       <div className="flex items-center gap-1">
                         <button type="button" onClick={() => moveCard(i, -1)} disabled={i === 0} className="rounded border border-zinc-300 px-1.5 py-0.5 text-xs disabled:opacity-30">↑</button>
@@ -595,9 +593,9 @@ export function CarouselStudio({
           </div>
 
           <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-3">
-            <button type="button" onClick={handleSave} disabled={saving} className="self-start rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:opacity-40">
-              {saving ? "저장 중..." : "저장"}
-            </button>
+            <Button size="sm" variant="secondary" className="self-start" onClick={handleSave} disabled={saving} loading={saving} loadingText="저장 중...">
+              저장
+            </Button>
           </div>
 
           {guideItems.length > 0 && (
@@ -617,27 +615,20 @@ export function CarouselStudio({
             {renderError && (
               <p className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">{renderError}</p>
             )}
-            <button
-              type="button"
+            <Button
+              size="sm"
+              className="self-start"
               onClick={handleRenderAll}
               disabled={renderState === "rendering" || includedCards.length === 0}
-              className="self-start rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+              loading={renderState === "rendering"}
+              loadingText={`이미지 생성 중... (${renderProgress ? renderProgress.done : 0}/${includedCards.length})`}
             >
-              {renderState === "rendering"
-                ? `이미지 생성 중... (${renderProgress ? renderProgress.done : 0}/${includedCards.length})`
-                : renderState === "done" && !renderStale
-                  ? "PNG 다시 만들기"
-                  : "PNG 만들기"}
-            </button>
+              {renderState === "done" && !renderStale ? "PNG 다시 만들기" : "PNG 만들기"}
+            </Button>
             {renderState === "done" && !renderStale && (
-              <button
-                type="button"
-                onClick={handleDownloadAll}
-                disabled={zipping}
-                className="self-start rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:opacity-40"
-              >
-                {zipping ? "압축 중..." : `전체 다운로드 (ZIP, ${includedCards.length}장)`}
-              </button>
+              <Button size="sm" variant="secondary" className="self-start" onClick={handleDownloadAll} disabled={zipping} loading={zipping} loadingText="압축 중...">
+                {`전체 다운로드 (ZIP, ${includedCards.length}장)`}
+              </Button>
             )}
           </div>
         </>

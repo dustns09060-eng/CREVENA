@@ -35,6 +35,7 @@ import {
 } from "../content/studio-ui";
 import type { PhotoManager } from "./usePhotoManager";
 import type { PhotoType } from "@/types/database";
+import { Button } from "@/components/ui/Button";
 
 type CollaborationInfo = {
   brandName: string;
@@ -459,21 +460,13 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
           {blogMeta && <SaveStatusBadge state={libraryDirty ? "dirty" : "saved"} />}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            onClick={() => setShowPublishAssistant(true)}
-            disabled={!blogMeta}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-40"
-          >
+          <Button variant="secondary" onClick={() => setShowPublishAssistant(true)} disabled={!blogMeta}>
             발행 도우미
-          </button>
+          </Button>
           <div className="flex flex-col items-end gap-0.5">
-            <button
-              onClick={handleWriteBlog}
-              disabled={busy || !hasBlogPhotos}
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-50"
-            >
-              {writing ? "블로그 작성 중..." : blogMeta ? "다시 작성" : "블로그 작성"}
-            </button>
+            <Button onClick={handleWriteBlog} disabled={busy || !hasBlogPhotos} loading={writing} loadingText="블로그 작성 중...">
+              {blogMeta ? "다시 작성" : "블로그 작성"}
+            </Button>
             <span className="text-[10px] text-zinc-400">{OPERATION_CREDIT_COST.BLOG_WRITE} 크레딧 사용</span>
           </div>
         </div>
@@ -615,27 +608,15 @@ export const PhotoBlogStudio = forwardRef<PhotoBlogStudioHandle, {
           <SectionHeader step={5} title="최종 검토 및 저장" />
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handleSave}
-              disabled={busy || !libraryDirty}
-              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
-            >
-              {saving ? "저장 중..." : "저장"}
-            </button>
-            <button
-              onClick={handleCopyAll}
-              disabled={busy}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-            >
+            <Button size="sm" onClick={handleSave} disabled={busy || !libraryDirty} loading={saving} loadingText="저장 중...">
+              저장
+            </Button>
+            <Button size="sm" variant="secondary" onClick={handleCopyAll} disabled={busy}>
               {copied ? "복사됨" : "전체 복사"}
-            </button>
-            <button
-              onClick={handleGuideCheck}
-              disabled={busy}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-            >
-              {checking ? "검사 중..." : `AI 가이드 검사 (${OPERATION_CREDIT_COST.GUIDE_CHECK} 크레딧)`}
-            </button>
+            </Button>
+            <Button size="sm" variant="secondary" onClick={handleGuideCheck} disabled={busy} loading={checking} loadingText="검사 중...">
+              {`AI 가이드 검사 (${OPERATION_CREDIT_COST.GUIDE_CHECK} 크레딧)`}
+            </Button>
             <Toast message={toastMessage} />
           </div>
 

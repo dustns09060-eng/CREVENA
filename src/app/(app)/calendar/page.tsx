@@ -2,6 +2,10 @@ import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SCHEDULE_TYPE_COLORS, SCHEDULE_TYPE_LABELS } from "@/lib/schedule-type";
 import type { ScheduleType } from "@/types/database";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { ErrorState } from "@/components/ui/States";
+import { ChevronLeftIcon, ChevronRightIcon } from "@/components/ui/Icon";
 
 type CalendarEvent = {
   date: string;
@@ -89,27 +93,27 @@ export default async function CalendarPage({
   const nextMonth = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
 
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-zinc-900">캘린더</h1>
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/calendar?year=${prevMonth.year}&month=${prevMonth.month}`}
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-          >
-            ← 이전달
-          </Link>
-          <span className="text-sm font-semibold text-zinc-900">
-            {year}년 {month}월
-          </span>
-          <Link
-            href={`/calendar?year=${nextMonth.year}&month=${nextMonth.month}`}
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-          >
-            다음달 →
-          </Link>
-        </div>
-      </div>
+    <div className="mx-auto flex w-full max-w-6xl flex-col">
+      <PageHeader
+        title="캘린더"
+        action={
+          <div className="flex items-center gap-2">
+            <Link href={`/calendar?year=${prevMonth.year}&month=${prevMonth.month}`}>
+              <Button variant="secondary" size="sm">
+                <ChevronLeftIcon size={14} /> 이전달
+              </Button>
+            </Link>
+            <span className="text-sm font-semibold text-zinc-900">
+              {year}년 {month}월
+            </span>
+            <Link href={`/calendar?year=${nextMonth.year}&month=${nextMonth.month}`}>
+              <Button variant="secondary" size="sm">
+                다음달 <ChevronRightIcon size={14} />
+              </Button>
+            </Link>
+          </div>
+        }
+      />
 
       <div className="mt-3 flex flex-wrap gap-3 text-xs text-zinc-500">
         {(Object.keys(SCHEDULE_TYPE_LABELS) as ScheduleType[]).map((t) => (
@@ -121,9 +125,9 @@ export default async function CalendarPage({
       </div>
 
       {error ? (
-        <p className="mt-6 rounded-xl border border-zinc-200 bg-white p-6 text-sm text-red-600">
-          일정을 불러오지 못했습니다: {error.message}
-        </p>
+        <div className="mt-6">
+          <ErrorState message={`일정을 불러오지 못했습니다: ${error.message}`} />
+        </div>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <div className="grid min-w-[640px] grid-cols-7 gap-px overflow-hidden rounded-xl border border-zinc-200 bg-zinc-200">
@@ -148,7 +152,7 @@ export default async function CalendarPage({
                     <>
                       <span
                         className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${
-                          isToday ? "bg-zinc-900 text-white" : "text-zinc-500"
+                          isToday ? "bg-brand-600 text-white" : "text-zinc-500"
                         }`}
                       >
                         {dayNum}

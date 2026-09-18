@@ -1,11 +1,14 @@
 import { requireAdmin } from "@/lib/admin/guard";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { ErrorState } from "@/components/ui/States";
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4">
+    <Card className="p-4">
       <p className="text-sm text-zinc-500">{label}</p>
       <p className="mt-1 text-2xl font-bold text-zinc-900">{value.toLocaleString()}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -16,15 +19,17 @@ export default async function AdminDashboardPage() {
   if (error || !stats) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-zinc-900">관리자 대시보드</h1>
-        <p className="mt-4 text-sm text-red-600">통계를 불러오지 못했습니다: {error?.message}</p>
+        <PageHeader title="관리자 대시보드" />
+        <div className="mt-4">
+          <ErrorState message={`통계를 불러오지 못했습니다: ${error?.message}`} />
+        </div>
       </div>
     );
   }
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-zinc-900">관리자 대시보드</h1>
+      <PageHeader title="관리자 대시보드" />
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label="전체 회원 수" value={stats.total_users} />
