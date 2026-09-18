@@ -449,7 +449,9 @@ export type Database = {
       payment_events: {
         Row: {
           id: string;
-          user_id: string;
+          // Nullable since migration 0024: on account deletion the FK is
+          // SET NULL so the transaction record survives the withdrawal.
+          user_id: string | null;
           payment_id: string;
           plan: string;
           amount: number;
@@ -465,7 +467,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          user_id: string;
+          user_id?: string | null;
           payment_id: string;
           plan: string;
           amount: number;
@@ -486,7 +488,10 @@ export type Database = {
         Row: {
           id: string;
           payment_event_id: string;
-          user_id: string;
+          // Nullable since migration 0024 (FK is ON DELETE SET NULL): the
+          // refund record outlives both the member and the admin who
+          // processed it.
+          user_id: string | null;
           refund_amount: number;
           reason: string | null;
           status: "PENDING" | "SUCCEEDED" | "FAILED";
@@ -500,7 +505,7 @@ export type Database = {
         Insert: {
           id?: string;
           payment_event_id: string;
-          user_id: string;
+          user_id?: string | null;
           refund_amount: number;
           reason?: string | null;
           status?: "PENDING" | "SUCCEEDED" | "FAILED";
