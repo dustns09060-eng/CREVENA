@@ -56,6 +56,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "환불 가능한 결제가 아닙니다." }, { status: 400 });
   }
 
+  // STEP45.2: since migration 0024, payment_events.user_id is SET NULL on
+  // account deletion — the transaction record is retained but no longer
+  // points at an account. Such a record cannot be refunded through this
+  // route: there is no plan to downgrade, and `.eq("id", null)` further
+  // down would be a silent no-op rather than a real account update. The
+  // admin UI never surfaces these rows (admin_user_detail is scoped to an
+  // existing user), so this is a defensive guard, not a reachable flow.
+  const paymentUserId = paymentEvent.user_id;
+  if (!paymentUserId) {
+    return NextResponse.json(
+      { error: "탈퇴한 회원의 결제 건은 화면에서 환불할 수 없습니다. 결제대행사를 통해 직접 처리해 주세요." },
+      { status: 409 },
+    );
+  }
+
   const { data: priorRefunds } = await service
     .from("payment_refunds")
     .select("refund_amount")
@@ -77,7 +92,7 @@ export async function POST(request: Request) {
   // instead of calling PortOne's cancel API a second time.
   const { error: insertError } = await service.from("payment_refunds").insert({
     payment_event_id: paymentEventId,
-    user_id: paymentEvent.user_id,
+    user_id: paymentUserId,
     refund_amount: requestedAmount,
     reason,
     status: "PENDING",
@@ -138,7 +153,7 @@ export async function POST(request: Request) {
           next_retry_at: null,
           retry_count: 0,
         })
-        .eq("id", paymentEvent.user_id);
+        .eq("id", paymentUserId);
     }
 
     return NextResponse.json({ ok: true });

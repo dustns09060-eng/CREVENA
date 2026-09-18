@@ -16,9 +16,19 @@ import { createSupabaseServiceClient } from "@/lib/supabase/service";
 // itself is `references auth.users(id) on delete cascade`, so removing the
 // auth user cascades collaborations / contents / photos / videos /
 // schedules / guides / creator_styles / photo_presets / ai_usage_logs /
-// ai_usage_quotas / ai_usage_reservations / payment_events /
-// payment_refunds. Storage objects do NOT cascade (storage.objects has no
-// FK to public.users), which is exactly why they are removed here first.
+// ai_usage_quotas / ai_usage_reservations. Storage objects do NOT cascade
+// (storage.objects has no FK to public.users), which is exactly why they
+// are removed here first.
+//
+// STEP45.2 — payment_events / payment_refunds are the deliberate
+// exception. Migration 0024 changes their user_id FK (and
+// payment_refunds.requested_by) from `on delete cascade` to
+// `on delete set null`, so the transaction/refund ledger SURVIVES a
+// withdrawal with its user pointer cleared, instead of being erased with
+// the account. This route must therefore never DELETE from those two
+// tables itself — it does not today, and must not start: the retention is
+// enforced entirely by the FK, and an explicit delete here would silently
+// defeat it. No PII is copied into those tables to compensate.
 
 const PHOTO_BUCKET = "collaboration-photos";
 const VIDEO_BUCKET = "collaboration-videos";
