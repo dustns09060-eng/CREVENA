@@ -26,6 +26,11 @@ export type CarouselPlanInput = {
   reviewNotes: ReviewNotes;
   styleSamples?: StyleSample[];
   photos: CarouselPhotoSummary[];
+  // STEP42: "이 글로 카드뉴스 만들기" — when repurposing from an already
+  // written Blog, its full text is handed over as an extra source the model
+  // must draw its hook/feature/experience text from (still only ever
+  // matching cards to photos by ai_analysis, never by paragraph order).
+  sourceBlogText?: string;
 };
 
 const CAROUSEL_ROLES = ["cover", "product", "detail", "usage", "feature", "experience", "closing"] as const;
@@ -70,7 +75,12 @@ export function buildCarouselPlanPrompt(input: CarouselPlanInput) {
     "photos 배열에 주어진 사진만 카드로 쓸 수 있다. 특별한 이유 없이 같은 사진을 여러 카드에 반복해서 쓰지 마라.",
     "가능하면 대표성이 가장 큰 사진을 role:\"cover\"인 첫 카드로 골라라.",
     "자연스러운 순서(cover → product/detail → usage → feature/experience → closing)로 배열하되, 실제 내용에 맞지 않으면 role을 억지로 다 채우지 않아도 된다.",
-  ].join("\n");
+    input.sourceBlogText
+      ? "아래 '원본 블로그 글'이 주어져 있다 — 이 블로그에 실제로 있는 사실/경험만 headline/body에 재사용하라. 블로그 문단 순서를 그대로 따라가지 말고, photos의 사진 내용(ai_analysis)과 가장 잘 맞는 카드에 배치하라. 블로그에 없는 새로운 경험/효과/감정을 추가하거나 블로그 문장의 의미를 더 강하게 확대하지 마라."
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const guideLines: string[] = [`브랜드: ${input.brandName}`, `제품명: ${input.productName}`];
   if (input.requiredKeywords) guideLines.push(`필수 키워드: ${input.requiredKeywords}`);
@@ -90,6 +100,7 @@ export function buildCarouselPlanPrompt(input: CarouselPlanInput) {
     "",
     "## 사용자가 입력한 후기 메모",
     reviewLines.length > 0 ? reviewLines.join("\n") : "(없음)",
+    ...(input.sourceBlogText ? ["", "## 원본 블로그 글", input.sourceBlogText] : []),
     "",
     "## 사용 가능한 사진",
     photoLines.join("\n"),

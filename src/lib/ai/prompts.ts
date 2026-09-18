@@ -1,4 +1,5 @@
 import type { ResponseSchema } from "./types";
+import type { ContentSourceMeta } from "@/lib/content-source";
 
 // STEP33: this file used to also generate NAVER_BLOG as plain text, but the
 // unified 콘텐츠 제작실's "블로그" tab is exclusively the photo-based blog
@@ -42,6 +43,16 @@ export type ContentGenerationInput = {
 // be restored after a refresh instead of re-parsing the flattened body.
 export type InstagramParts = { hook: string; body: string; cta: string; hashtags: string };
 export type ThreadsParts = { posts: string[] };
+
+// STEP42: a repurposed post stores sourceMeta alongside its normal parts in
+// generation_input — kept as a separate wrapper type (rather than adding
+// `sourceMeta` directly onto InstagramParts/ThreadsParts) because other code
+// iterates `keyof InstagramParts`/`keyof ThreadsParts` assuming every field
+// is a plain string (e.g. PlatformPanel's per-field regenerate buttons) —
+// adding a non-string field there would break that. sourceMeta is optional
+// and never produced by the AI itself (not part of either response schema
+// below); the repurpose flow merges it in after parsing, right before saving.
+export type WithSourceMeta<T> = T & { sourceMeta?: ContentSourceMeta };
 
 export function assembleInstagramText(parts: InstagramParts): string {
   return [parts.hook, parts.body, parts.cta, parts.hashtags].filter((s) => s?.trim()).join("\n\n");
@@ -306,4 +317,56 @@ export function buildContentAutoFillPrompt(
   ];
 
   return { systemPrompt, prompt: promptParts.join("\n"), responseSchema: CONTENT_RESPONSE_SCHEMAS[platform] };
+}
+
+// ---------------------------------------------------------------------------
+// STEP42: "이 글로 인스타/Threads 만들기" — repurposes an already-generated
+// Blog as the primary source instead of building from guide/reviewNotes
+// alone. Reuses the exact same COMMON_RULES/PLATFORM_STRUCTURE_INSTRUCTIONS/
+// CONTENT_RESPONSE_SCHEMAS/credit route (CONTENT_GENERATE, 1 credit via
+// /api/ai/generate) as a normal from-scratch generation — repurposing isn't
+// priced differently, it's the same "write one SNS post" operation with a
+// richer source. The no-fabrication rule is restated with an explicit
+// "don't amplify the Blog's wording" clause (STEP42 item 17) since the model
+// now has a full finished draft in front of it, which is exactly the
+// situation most likely to tempt it into "improving" a hedge into a claim.
+// ---------------------------------------------------------------------------
+export function buildRepurposeFromBlogPrompt(
+  platform: ContentPlatformKey,
+  sourceBlogText: string,
+  input: ContentGenerationInput,
+): { systemPrompt: string; prompt: string; responseSchema: ResponseSchema } {
+  const styleSamplesText = formatStyleSamples(input.styleSamples);
+  const styleInstruction = styleSamplesText
+    ? "아래 '내 글 스타일 예시'와 비슷한 말투, 문장 습관, 어조로 작성하라. 예시의 내용을 그대로 베끼지는 마라."
+    : null;
+
+  const systemPrompt = [
+    COMMON_RULES,
+    "너는 이미 완성된 블로그 글을 재료로 삼아 다른 채널용 글로 다시 구성하는 어시스턴트다.",
+    "블로그 원문을 그대로 잘라 붙이거나 앞부분만 잘라내지 말고, 이 채널에 맞는 길이/톤으로 새로 써라.",
+    "블로그 원문에 실제로 있는 사실과 표현만 재사용하라 — 블로그에 없는 새로운 경험/효과/감정/재구매",
+    "의사/아이 반응/사용 기간을 추가하지 마라.",
+    "블로그 문장의 의미를 절대 더 강하게 확대하지 마라. 예를 들어 블로그에 \"촉촉하게 느껴졌다\"라고만",
+    "쓰여 있다면 \"건조함이 완전히 해결됐다\" 같은 더 강한 효능 표현으로 바꾸지 마라.",
+    styleInstruction,
+    PLATFORM_STRUCTURE_INSTRUCTIONS[platform],
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const promptParts = [
+    "## 원본 블로그 글 (이 채널용으로 다시 구성할 재료)",
+    sourceBlogText,
+    "",
+    ...buildContextBlock(input, styleSamplesText),
+    "",
+    "위 블로그 글의 내용을 재구성해서 새 글을 작성해줘.",
+  ];
+
+  return {
+    systemPrompt,
+    prompt: promptParts.join("\n"),
+    responseSchema: CONTENT_RESPONSE_SCHEMAS[platform],
+  };
 }
