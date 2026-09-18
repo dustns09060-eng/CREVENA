@@ -475,6 +475,19 @@ export function StudioTabs({
     // STEP F: 결과 화면 표시
     update("result", "done");
 
+    // STEP44 fix: found via real testing — this bulk pipeline saves
+    // Blog/Instagram/Threads through each panel's own imperative generate()
+    // (which persists via saveContent internally), but never refreshed
+    // initialInstagram/initialThreads props the way repurposeBlogToPlatform/
+    // handleCarouselRepurpose/handleReelsRepurpose already do (STEP42). That
+    // left localInstagram/localThreads stale immediately after a bulk
+    // generate, so requestRepurpose's "이미 콘텐츠가 있습니다" existing-
+    // content check read them as empty and skipped the overwrite
+    // confirmation the very first time a repurpose ran right after this
+    // pipeline — reproduced live: Blog→Instagram silently overwrote a
+    // freshly bulk-generated Instagram post with zero confirmation dialog.
+    router.refresh();
+
     pipelineRunningRef.current = false;
     setPipelineRunning(false);
   }
@@ -528,7 +541,19 @@ export function StudioTabs({
       return;
     }
     const label = platform === "INSTAGRAM_FEED" ? "Instagram" : "Threads";
-    const existing = platform === "INSTAGRAM_FEED" ? localInstagram : localThreads;
+    const targetRef = platform === "INSTAGRAM_FEED" ? igRef : threadsRef;
+    // STEP44 fix: found via real testing — the bulk "AI 콘텐츠 만들기"
+    // pipeline generates Instagram/Threads via each panel's own generate()
+    // (PlatformPanel.tsx), which never auto-saves (only the panel's own
+    // "저장" button does — see its setSavedId(null) right after generating).
+    // That left `localInstagram`/`localThreads` (which only reflect
+    // *saved* content) empty even though the panel was visibly showing
+    // freshly generated, unsaved content — so this existing-content check
+    // read as "nothing to protect" and repurposeBlogToPlatform overwrote a
+    // real (if unsaved) draft with zero confirmation. isDirty() reports
+    // that same in-panel draft regardless of save state, so checking it
+    // alongside the saved-content flag catches this case too.
+    const existing = (platform === "INSTAGRAM_FEED" ? localInstagram : localThreads) || targetRef.current?.isDirty();
     const run = () =>
       runRepurpose(platform, async () => {
         const { systemPrompt, prompt, responseSchema } = buildRepurposeFromBlogPrompt(platform, initialBlog!.body, {
