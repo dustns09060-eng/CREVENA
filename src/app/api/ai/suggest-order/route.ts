@@ -21,6 +21,22 @@ function isResponseSchema(value: unknown): value is ResponseSchema {
 const OPERATION = "ORDER_SUGGEST" as const;
 const CREDITS_NEEDED = OPERATION_CREDIT_COST.ORDER_SUGGEST;
 
+// STEP47-1: the provider default (2048) is too small for this route's
+// STRUCTURED responses. Measured in a real 20-photo run of "AI로 사진
+// 고르기": output_tokens came back as exactly 2048 twice in a row, i.e. the
+// tool_use JSON was cut off mid-write. Anthropic still returns the partial
+// tool input, so the call "succeeds" and the trailing field of
+// photoSelectSchema — `reasons` (per-photo 추천 이유 + 역할) — silently
+// arrives empty instead of erroring. With more photos the truncation would
+// eat `groups` and `requiredShots` next, which are load-bearing.
+//
+// max_tokens is a CAP, not a target: the legacy 사진 순서 추천 response
+// (~300 output tokens) is unaffected and costs exactly what it did before.
+// The 2-credit price of this operation is unchanged and still fixed by the
+// route, never by the client — this value is deliberately NOT read from the
+// request body.
+const MAX_TOKENS = 4096;
+
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -74,6 +90,7 @@ export async function POST(request: Request) {
       prompt,
       systemPrompt: typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
       responseSchema,
+      maxTokens: MAX_TOKENS,
     });
 
     if (responseSchema) {
