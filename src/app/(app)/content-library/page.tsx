@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CONTENT_STATUS_LABELS, CONTENT_STATUSES } from "@/lib/content-status";
-import { UPLOAD_PLATFORM_LABELS } from "@/lib/upload-platforms";
+import { contentPlatformLabel } from "@/lib/content-platforms";
 import { CopyButton } from "@/components/CopyButton";
 import type { ContentPlatform } from "@/types/database";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 
 function platformLabel(platform: ContentPlatform) {
-  return UPLOAD_PLATFORM_LABELS[platform] ?? platform;
+  return contentPlatformLabel(platform);
 }
 
 export default async function ContentLibraryPage({
