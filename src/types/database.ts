@@ -161,6 +161,11 @@ export type Database = {
           ad_disclosure_text: string | null;
           memo: string | null;
           review_notes: Json;
+          // STEP47 (migration 0026 — NOT yet applied to production): AI
+          // Photo Select run + the user's 꼭 사용/제외/사용 overrides. Every
+          // read/write of this column is written to tolerate the column not
+          // existing yet — see photo-select-actions.ts.
+          photo_select: Json | null;
           status: CollaborationStatus;
           created_at: string;
           updated_at: string;
@@ -191,6 +196,7 @@ export type Database = {
           ad_disclosure_text?: string | null;
           memo?: string | null;
           review_notes?: Json;
+          photo_select?: Json | null;
           status?: CollaborationStatus;
           created_at?: string;
           updated_at?: string;

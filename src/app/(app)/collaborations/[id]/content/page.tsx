@@ -8,6 +8,7 @@ import type { BlogMeta } from "../photos/actions";
 import type { ReelsProject } from "../reels/actions";
 import type { CarouselProject } from "../carousel/actions";
 import type { ContentStatus } from "@/types/database";
+import { sanitizePhotoSelection } from "@/lib/photo-select";
 
 const BUCKET = "collaboration-photos";
 const VIDEO_BUCKET = "collaboration-videos";
@@ -37,6 +38,23 @@ export default async function CollaborationContentPage({
 
   if (!collaboration) {
     notFound();
+  }
+
+  // STEP47: read the saved AI Photo Select state in its OWN query, never
+  // joined into the collaboration select above. Migration 0026 (which adds
+  // collaborations.photo_select) is not applied to production by STEP47, so
+  // this query can legitimately fail with "column does not exist" — and a
+  // failure here must degrade the feature to session-only, never break
+  // Content Studio. Sanitized against the real photo id set further below.
+  const { data: photoSelectRow, error: photoSelectError } = await supabase
+    .from("collaborations")
+    .select("photo_select")
+    .eq("id", id)
+    .maybeSingle();
+  if (photoSelectError) {
+    console.warn(
+      `collaborations.photo_select unavailable (STEP47 migration 0026 likely not applied): ${photoSelectError.message}`,
+    );
   }
 
   const { data: guide } = await supabase
@@ -142,6 +160,13 @@ export default async function CollaborationContentPage({
 
   const photosWithUrls = photoList.map((p, i) => ({ ...p, ...signedUrls[i] }));
 
+  // Every stored photo id is re-validated against the photos that actually
+  // exist right now, so an id left behind by a deleted photo (or a stale
+  // write from another tab) can never reach the client.
+  const initialPhotoSelection = photoSelectRow?.photo_select
+    ? sanitizePhotoSelection(photoSelectRow.photo_select, photoList.map((p) => p.id))
+    : null;
+
   const { data: videos } = await supabase
     .from("collaboration_videos")
     .select("*")
@@ -188,6 +213,7 @@ export default async function CollaborationContentPage({
           initialReels={initialReels}
           initialNaverClip={initialNaverClip}
           initialCarousel={initialCarousel}
+          initialPhotoSelection={initialPhotoSelection}
           collaborationInfo={{
             brandName: collaboration.brand_name,
             productName: collaboration.product_name,
