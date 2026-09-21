@@ -52,6 +52,7 @@ const TRUNCATED_USER_MESSAGE =
 
 class OutputTruncatedError extends Error {
   constructor(
+    readonly inputTokens: number,
     readonly outputTokens: number,
     readonly maxTokens: number,
   ) {
@@ -117,7 +118,7 @@ export async function POST(request: Request) {
     });
 
     if (stopReason === STOP_REASON_MAX_TOKENS) {
-      throw new OutputTruncatedError(usage.outputTokens, MAX_TOKENS);
+      throw new OutputTruncatedError(usage.inputTokens, usage.outputTokens, MAX_TOKENS);
     }
 
     if (responseSchema) {
@@ -150,7 +151,7 @@ export async function POST(request: Request) {
     if (truncated) {
       // Only numbers — never the partial content, prompt, or photo ids.
       console.error(
-        `[/api/ai/suggest-order] 실패 (${errorType}): outputTokens=${error.outputTokens} maxTokens=${error.maxTokens}`,
+        `[/api/ai/suggest-order] 실패 (${errorType}): inputTokens=${error.inputTokens} outputTokens=${error.outputTokens} maxTokens=${error.maxTokens}`,
       );
     } else {
       console.error(`[/api/ai/suggest-order] 실패 (${errorType}):`, error);
@@ -164,6 +165,9 @@ export async function POST(request: Request) {
       model,
       status: "failed",
       errorType,
+      // The truncated call was still billed by the provider, so keep its real
+      // token counts (credits_used stays 0) for /admin/usage cost visibility.
+      inputTokens: truncated ? error.inputTokens : null,
       outputTokens: truncated ? error.outputTokens : null,
       creditsUsed: 0,
     });
