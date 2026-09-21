@@ -2,6 +2,14 @@
 // real signup/login screen hits to Korean so users aren't shown raw English.
 const KNOWN_AUTH_ERRORS: { match: (msg: string) => boolean; ko: string }[] = [
   {
+    // Migration 0030: handle_new_user() raises when the signup consent
+    // metadata is missing/invalid; GoTrue surfaces any failing signup
+    // trigger with this generic message. The signup form never sends such a
+    // request, so this only appears for a stale page or a bypassed client.
+    match: (m) => m.includes("Database error saving new user"),
+    ko: "회원가입을 완료하지 못했어요. 필수 동의 항목을 확인한 뒤 페이지를 새로 고치고 다시 시도해주세요.",
+  },
+  {
     match: (m) => m.includes("Email not confirmed"),
     ko: "이메일 인증이 아직 완료되지 않았습니다. 받은편지함에서 인증 메일의 링크를 클릭한 후 다시 로그인해주세요.",
   },

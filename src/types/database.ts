@@ -534,6 +534,32 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["payment_refunds"]["Insert"]>;
         Relationships: [];
       };
+      // Migration 0030: signup consent record. Members can only SELECT their
+      // own rows; the handle_new_user() trigger is the only writer.
+      user_consents: {
+        Row: {
+          id: string;
+          // NULL after a withdrawal (ON DELETE SET NULL): the row is kept as
+          // de-identified evidence that consent was obtained.
+          user_id: string | null;
+          consent_type: "AGE_14" | "TERMS" | "PRIVACY";
+          document_version: string;
+          agreed_at: string;
+          source: "SIGNUP" | "REPROMPT";
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          consent_type: "AGE_14" | "TERMS" | "PRIVACY";
+          document_version: string;
+          agreed_at?: string;
+          source: "SIGNUP" | "REPROMPT";
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["user_consents"]["Insert"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
