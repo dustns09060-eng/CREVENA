@@ -53,8 +53,9 @@ export function DangerZone({ blockedBySubscription }: { blockedBySubscription: b
     <div className="mt-6 rounded-xl border border-red-200 bg-red-50/50 p-4 sm:p-5">
       <h2 className="text-lg font-semibold text-red-700">회원탈퇴</h2>
       <p className="mt-1 text-sm text-red-700/80">
-        계정을 삭제하면 협찬 기록, 생성한 콘텐츠, 업로드한 사진·영상이 모두 삭제되며 복구할 수
-        없습니다.
+        계정을 삭제하면 협찬 기록, 생성한 콘텐츠, 업로드한 사진·영상 등 회원 데이터가 삭제되며 복구할 수
+        없습니다. 다만 관계 법령에 따라 보존해야 하는 결제·환불 등 일부 기록은 회원 연결 정보를 제거한 뒤 일정
+        기간 보관될 수 있습니다.
       </p>
 
       {blockedBySubscription ? (
@@ -78,7 +79,7 @@ export function DangerZone({ blockedBySubscription }: { blockedBySubscription: b
         open={open}
         onClose={close}
         title="정말 탈퇴하시겠어요?"
-        description="협찬, 콘텐츠, 업로드한 사진과 영상이 모두 영구 삭제되며 복구할 수 없습니다. 계속하려면 아래에 '탈퇴'를 입력해 주세요."
+        description="협찬, 콘텐츠, 업로드한 사진과 영상 등 회원 데이터가 삭제되며 복구할 수 없습니다. 관계 법령에 따라 보존해야 하는 결제·환불 등 일부 기록은 회원 연결 정보를 제거한 뒤 일정 기간 보관될 수 있습니다. 계속하려면 아래에 '탈퇴'를 입력해 주세요."
       >
         <label htmlFor="delete-confirm" className="text-xs font-medium text-zinc-700">
           확인 문구 입력
@@ -106,7 +107,7 @@ export function DangerZone({ blockedBySubscription }: { blockedBySubscription: b
           loadingText="탈퇴 처리 중..."
           onClick={handleDelete}
         >
-          영구 삭제하기
+          탈퇴하기
         </Button>
         <Button variant="ghost" size="sm" disabled={pending} onClick={close}>
           취소
