@@ -8,6 +8,7 @@ import {
   OperatorTodo,
 } from "@/components/layout/LegalPage";
 import { SUPPORT_EMAIL, SUPPORT_EMAIL_HREF } from "@/lib/support";
+import { TERMS_VERSION } from "@/lib/legal-docs";
 import { BUSINESS_NAME, BUSINESS_REG_NO, MAIL_ORDER_REPORT_NO, REPRESENTATIVE_NAME } from "@/lib/business";
 
 export const metadata: Metadata = {
@@ -27,6 +28,8 @@ export default function TermsPage() {
       title="이용약관"
       description="CREVENA(이하 “서비스”)를 이용해 주셔서 감사합니다. 본 약관은 서비스 이용 조건과 회사와 회원 간의 권리·의무를 정합니다."
     >
+      <LegalText>문서 버전: {TERMS_VERSION}</LegalText>
+
       <OperatorTodo>
         본 약관은 서비스의 실제 동작을 기준으로 작성한 <b>운영용 초안</b>이며, 변호사 검토를 거친 문서가 아닙니다. 정식
         서비스 개시 전 법률 전문가의 검토를 받으시기 바랍니다. 아래 <b>[운영자 확인 필요]</b> 표시가 있는 항목은 사업자
@@ -80,7 +83,7 @@ export default function TermsPage() {
       <LegalSection heading="제4조 (회원가입 및 계정)">
         <LegalList
           items={[
-            "회원가입은 이메일 주소와 비밀번호를 입력하고 본 약관에 동의함으로써 신청되며, 회사가 이를 승낙하고 이메일 인증이 완료된 때에 성립합니다.",
+            "회원가입은 이메일 주소와 비밀번호를 입력하고, 만 14세 이상임을 확인하며, 본 약관과 개인정보처리방침에 동의함으로써 신청되며, 회사가 이를 승낙하고 이메일 인증이 완료된 때에 성립합니다. 가입 시 이러한 확인·동의 사실은 문서 버전과 일시와 함께 기록됩니다.",
             "CREVENA는 별도의 아이디 없이 가입 시 사용한 이메일 주소를 로그인 계정으로 사용합니다.",
             "회원은 하나의 계정을 본인만 사용하여야 하며, 계정 정보를 제3자와 공유하거나 양도·대여할 수 없습니다.",
             "회원은 비밀번호를 스스로 안전하게 관리할 책임이 있으며, 계정의 부정 사용이 의심되는 경우 즉시 회사에 알려야 합니다.",

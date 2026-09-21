@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { translateAuthError } from "@/lib/auth-error";
+import { buildSignupConsentData } from "@/lib/legal-docs";
 import { Button } from "@/components/ui/Button";
 
 const CONFIRM_ERROR_MESSAGE =
@@ -33,6 +34,19 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [signedUpEmail, setSignedUpEmail] = useState<string | null>(null);
+  // Signup consents (all required). Only a client-side convenience: the
+  // database re-validates them (migration 0030), so they cannot be bypassed
+  // by calling Supabase Auth directly.
+  const [ageOver14, setAgeOver14] = useState(false);
+  const [termsAgreed, setTermsAgreed] = useState(false);
+  const [privacyAgreed, setPrivacyAgreed] = useState(false);
+  const allAgreed = ageOver14 && termsAgreed && privacyAgreed;
+
+  function setAllConsents(value: boolean) {
+    setAgeOver14(value);
+    setTermsAgreed(value);
+    setPrivacyAgreed(value);
+  }
 
   async function handleResend() {
     if (!signedUpEmail) return;
@@ -50,6 +64,15 @@ function LoginForm() {
     e.preventDefault();
     setError(null);
     setNotice(null);
+
+    // Signup: no request is sent unless every required consent is checked.
+    const consentData =
+      mode === "signup" ? buildSignupConsentData({ ageOver14, terms: termsAgreed, privacy: privacyAgreed }) : null;
+    if (mode === "signup" && !consentData) {
+      setError("필수 항목(만 14세 이상, 이용약관, 개인정보처리방침)에 모두 동의해주세요.");
+      return;
+    }
+
     setLoading(true);
 
     if (mode === "signin") {
@@ -65,7 +88,7 @@ function LoginForm() {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback`, data: consentData ?? undefined },
       });
       setLoading(false);
       if (error) {
@@ -110,6 +133,67 @@ function LoginForm() {
           />
         </div>
 
+        {mode === "signup" && (
+          <fieldset className="mt-4 flex flex-col gap-2 text-xs text-zinc-600">
+            <legend className="sr-only">필수 동의 항목</legend>
+            <label className="flex items-center gap-2 font-medium text-zinc-800">
+              <input
+                type="checkbox"
+                checked={allAgreed}
+                onChange={(e) => setAllConsents(e.target.checked)}
+                className="h-4 w-4 shrink-0 accent-brand-600"
+              />
+              전체 동의
+            </label>
+            <div className="flex flex-col gap-2 border-t border-zinc-100 pt-2">
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  required
+                  checked={ageOver14}
+                  onChange={(e) => setAgeOver14(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                />
+                <span>
+                  <span className="font-medium text-brand-700">[필수]</span> 만 14세 이상입니다.
+                </span>
+              </label>
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  required
+                  checked={termsAgreed}
+                  onChange={(e) => setTermsAgreed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                />
+                <span>
+                  <span className="font-medium text-brand-700">[필수]</span>{" "}
+                  <Link href="/terms" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                    이용약관
+                  </Link>
+                  에 동의합니다.
+                </span>
+              </label>
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  required
+                  checked={privacyAgreed}
+                  onChange={(e) => setPrivacyAgreed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                />
+                <span>
+                  <span className="font-medium text-brand-700">[필수]</span>{" "}
+                  <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                    개인정보처리방침
+                  </Link>
+                  에 동의합니다.
+                </span>
+              </label>
+            </div>
+          </fieldset>
+        )}
+
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         {notice && <p className="mt-3 text-sm text-emerald-600">{notice}</p>}
 
@@ -147,6 +231,7 @@ function LoginForm() {
             setError(null);
             setNotice(null);
             setSignedUpEmail(null);
+            setAllConsents(false);
           }}
           className="mt-3 min-h-[44px] w-full text-center text-sm text-zinc-500 hover:text-zinc-900"
         >
