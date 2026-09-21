@@ -32,6 +32,11 @@ export type TokenUsage = {
 export type GenerateContentResult = {
   content: string;
   usage: TokenUsage;
+  // The provider's own stop reason, passed through untouched (Anthropic:
+  // "end_turn" | "max_tokens" | "tool_use" | ...). Callers whose output must
+  // be COMPLETE (structured results that get persisted) check it; callers
+  // that don't care can ignore it. null when the provider didn't report one.
+  stopReason?: string | null;
 };
 
 export interface AIProvider {

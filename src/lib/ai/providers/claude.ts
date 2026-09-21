@@ -69,6 +69,7 @@ export class ClaudeProvider implements AIProvider {
       inputTokens: data.usage?.input_tokens ?? 0,
       outputTokens: data.usage?.output_tokens ?? 0,
     };
+    const stopReason: string | null = typeof data.stop_reason === "string" ? data.stop_reason : null;
 
     if (responseSchema) {
       const toolUseBlock = data.content?.find(
@@ -80,7 +81,7 @@ export class ClaudeProvider implements AIProvider {
           "Claude API 응답에서 구조화된 데이터(tool_use)를 찾을 수 없습니다.",
         );
       }
-      return { content: JSON.stringify(toolUseBlock.input), usage };
+      return { content: JSON.stringify(toolUseBlock.input), usage, stopReason };
     }
 
     const text = data.content
@@ -92,6 +93,6 @@ export class ClaudeProvider implements AIProvider {
       throw new Error("Claude API 응답에서 텍스트를 찾을 수 없습니다.");
     }
 
-    return { content: text, usage };
+    return { content: text, usage, stopReason };
   }
 }

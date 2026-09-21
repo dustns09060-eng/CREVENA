@@ -37,6 +37,29 @@ const CREDITS_NEEDED = OPERATION_CREDIT_COST.ORDER_SUGGEST;
 // request body.
 const MAX_TOKENS = 4096;
 
+// STEP47-2: raising MAX_TOKENS only moves the cliff — a forced tool_use that
+// hits the cap is still returned by Anthropic as a normal 200 with a partial
+// input, and stop_reason is the only signal. A truncated result must never
+// count as a success: it would be parsed, shown, and persisted to
+// collaborations.photo_select as if it were complete (empty reasons, missing
+// requiredShots), and the 2 credits would be kept. Instead it takes the same
+// path as any other failure: credits refunded, usage logged as failed, and
+// nothing reaches the client to save.
+const STOP_REASON_MAX_TOKENS = "max_tokens";
+const TRUNCATED_ERROR_TYPE = "OUTPUT_TRUNCATED";
+const TRUNCATED_USER_MESSAGE =
+  "사진이 많아 AI 추천 결과를 완성하지 못했어요.\n사용한 크레딧은 자동으로 복구되었습니다.\n다시 시도해 주세요.";
+
+class OutputTruncatedError extends Error {
+  constructor(
+    readonly outputTokens: number,
+    readonly maxTokens: number,
+  ) {
+    super("AI 응답이 max_tokens 한도에서 잘림");
+    this.name = "OutputTruncatedError";
+  }
+}
+
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -86,12 +109,16 @@ export async function POST(request: Request) {
 
   try {
     const aiProvider = getAIProvider();
-    const { content, usage } = await aiProvider.generateContent({
+    const { content, usage, stopReason } = await aiProvider.generateContent({
       prompt,
       systemPrompt: typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
       responseSchema,
       maxTokens: MAX_TOKENS,
     });
+
+    if (stopReason === STOP_REASON_MAX_TOKENS) {
+      throw new OutputTruncatedError(usage.outputTokens, MAX_TOKENS);
+    }
 
     if (responseSchema) {
       try {
@@ -118,8 +145,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ content });
   } catch (error) {
     await refundAiCredits(supabase, usageCheck.reservationId);
-    const errorType = classifyErrorType(error);
-    console.error(`[/api/ai/suggest-order] 실패 (${errorType}):`, error);
+    const truncated = error instanceof OutputTruncatedError;
+    const errorType = truncated ? TRUNCATED_ERROR_TYPE : classifyErrorType(error);
+    if (truncated) {
+      // Only numbers — never the partial content, prompt, or photo ids.
+      console.error(
+        `[/api/ai/suggest-order] 실패 (${errorType}): outputTokens=${error.outputTokens} maxTokens=${error.maxTokens}`,
+      );
+    } else {
+      console.error(`[/api/ai/suggest-order] 실패 (${errorType}):`, error);
+    }
     await logAiUsage(supabase, {
       userId: user.id,
       collaborationId,
@@ -129,8 +164,12 @@ export async function POST(request: Request) {
       model,
       status: "failed",
       errorType,
+      outputTokens: truncated ? error.outputTokens : null,
       creditsUsed: 0,
     });
-    return NextResponse.json({ error: GENERIC_AI_FAILURE_MESSAGE }, { status: 500 });
+    return NextResponse.json(
+      { error: truncated ? TRUNCATED_USER_MESSAGE : GENERIC_AI_FAILURE_MESSAGE },
+      { status: truncated ? 422 : 500 },
+    );
   }
 }
