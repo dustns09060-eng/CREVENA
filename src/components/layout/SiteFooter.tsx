@@ -1,19 +1,18 @@
 import Link from "next/link";
 import { SUPPORT_EMAIL, SUPPORT_EMAIL_HREF } from "@/lib/support";
+import { BUSINESS_NAME, BUSINESS_REG_NO, MAIL_ORDER_REPORT_NO, REPRESENTATIVE_NAME } from "@/lib/business";
 
 // STEP45: one shared footer for the public surface (landing + the four
 // policy/info pages) so the legal links are reachable from anywhere a
 // logged-out visitor can land.
 //
-// Deliberately NO business-registration block (상호/대표자/사업자등록번호/주소).
-// Nothing in this repo establishes those values, and putting invented or
-// obviously-placeholder text into a production-facing footer would be worse
-// than omitting it — see the STEP45 report's "운영자 입력 필요 정보" section.
-// Add the block here once the operator supplies real values.
+// STEP45.1: the 고객문의 email is confirmed and shown below.
 //
-// STEP45.1: the 고객문의 email IS now confirmed, so it is shown below. It is
-// the only contact detail added — no phone number, no address, and still no
-// 사업자등록번호/통신판매업 신고번호, because none of those were provided.
+// The business-registration block (상호/대표자/사업자등록번호, plus the
+// 통신판매업 신고번호 once it exists) comes from @/lib/business, taken from the
+// operator's 사업자등록증. The 사업장 주소 is deliberately not shown — the
+// operator chose not to publish it; see the note in @/lib/business about the
+// display rules that may still require it.
 const FOOTER_LINKS = [
   { href: "/terms", label: "이용약관" },
   { href: "/privacy", label: "개인정보처리방침" },
@@ -50,8 +49,12 @@ export function SiteFooter() {
       </div>
 
       <div className="border-t border-zinc-200">
-        <div className="mx-auto max-w-6xl px-4 py-4 text-xs text-zinc-400 sm:px-6">
-          © {new Date().getFullYear()} CREVENA
+        <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-4 text-xs text-zinc-400 sm:px-6">
+          <span>
+            상호 {BUSINESS_NAME} · 대표자 {REPRESENTATIVE_NAME} · 사업자등록번호 {BUSINESS_REG_NO}
+            {MAIL_ORDER_REPORT_NO ? ` · 통신판매업 신고번호 ${MAIL_ORDER_REPORT_NO}` : ""}
+          </span>
+          <span>© {new Date().getFullYear()} CREVENA</span>
         </div>
       </div>
     </footer>

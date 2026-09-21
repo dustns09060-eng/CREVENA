@@ -9,6 +9,7 @@ import {
   OperatorTodo,
 } from "@/components/layout/LegalPage";
 import { SUPPORT_EMAIL, SUPPORT_EMAIL_HREF } from "@/lib/support";
+import { BUSINESS_NAME, BUSINESS_REG_NO, REPRESENTATIVE_NAME } from "@/lib/business";
 
 export const metadata: Metadata = {
   title: "개인정보처리방침",
@@ -33,7 +34,7 @@ export default function PrivacyPage() {
     >
       <OperatorTodo>
         본 방침은 서비스의 <b>실제 코드 동작을 확인하여 작성한 운영용 초안</b>이며, 변호사 검토를 거친 문서가 아닙니다.
-        아래 <b>[운영자 확인 필요]</b> 표시 항목(보유 기간, 개인정보 보호책임자, 사업자 정보, 국외 이전 국가·일시)은 정식
+        아래 <b>[운영자 확인 필요]</b> 표시 항목(보유 기간, 개인정보 보호책임자, 국외 이전 국가·일시)은 정식
         오픈 전에 반드시 확정하여 기재해야 합니다.
       </OperatorTodo>
 
@@ -227,10 +228,12 @@ export default function PrivacyPage() {
           </a>
           으로 접수하실 수 있습니다.
         </LegalText>
+        <LegalText>
+          개인정보를 처리하는 사업자: {BUSINESS_NAME} (대표자 {REPRESENTATIVE_NAME}, 사업자등록번호 {BUSINESS_REG_NO})
+        </LegalText>
         <OperatorTodo>
-          <b>[운영자 확인 필요]</b> <b>개인정보 보호책임자의 성명·직책</b>과 사업자 정보는 사업자 등록 및 담당자 지정 후
-          기재해야 합니다. 저장소 내에 확정된 값이 없어 임의의 이름·주소를 기재하지 않았습니다. (문의 이메일은 확정되어
-          위에 기재했습니다.)
+          <b>[운영자 확인 필요]</b> <b>개인정보 보호책임자의 성명·직책</b>은 담당자 지정 후 기재해야 합니다. 저장소 내에
+          확정된 값이 없어 임의의 이름을 기재하지 않았습니다. (문의 이메일은 확정되어 위에 기재했습니다.)
         </OperatorTodo>
       </LegalSection>
 

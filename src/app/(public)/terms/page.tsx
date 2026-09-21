@@ -8,6 +8,7 @@ import {
   OperatorTodo,
 } from "@/components/layout/LegalPage";
 import { SUPPORT_EMAIL, SUPPORT_EMAIL_HREF } from "@/lib/support";
+import { BUSINESS_NAME, BUSINESS_REG_NO, MAIL_ORDER_REPORT_NO, REPRESENTATIVE_NAME } from "@/lib/business";
 
 export const metadata: Metadata = {
   title: "이용약관",
@@ -255,10 +256,16 @@ export default function TermsPage() {
           </a>
           입니다.
         </LegalText>
+        <LegalList
+          items={[
+            <>상호: {BUSINESS_NAME}</>,
+            <>대표자: {REPRESENTATIVE_NAME}</>,
+            <>사업자등록번호: {BUSINESS_REG_NO}</>,
+            ...(MAIL_ORDER_REPORT_NO ? [<>통신판매업 신고번호: {MAIL_ORDER_REPORT_NO}</>] : []),
+          ]}
+        />
         <OperatorTodo>
-          <b>[운영자 확인 필요]</b> 상호, 대표자명, 사업자등록번호, 통신판매업 신고번호, 사업장 주소 및 본 약관의
-          시행일자는 사업자 정보 확정 후 기재해야 합니다. 저장소 내에 확정된 값이 없어 임의로 채우지 않았습니다. (고객
-          문의 이메일은 확정되어 위에 기재했습니다.)
+          <b>[운영자 확인 필요]</b> 통신판매업 신고번호(신고 완료 후)와 본 약관의 시행일자는 확정 후 기재해야 합니다.
         </OperatorTodo>
       </LegalSection>
     </LegalPage>
