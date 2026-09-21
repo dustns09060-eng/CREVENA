@@ -5,6 +5,7 @@ import { SectionHeader, PhotoUploadEmptyState } from "./studio-ui";
 import { PHOTO_TYPE_LABELS } from "@/lib/photo-type";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
 import { Badge } from "@/components/ui/Badge";
+import { XIcon } from "@/components/ui/Icon";
 import { PhotoEditor } from "../photos/PhotoEditor";
 import { PhotoSelectPanel } from "./PhotoSelectPanel";
 import { PHOTO_SELECT_STATE_LABELS } from "@/lib/photo-select";
@@ -56,6 +57,7 @@ export function PhotoSection({
     stateOf,
     selection,
     orderStale,
+    error,
     handleAddPhotos,
     handleAnalyzeAll,
     handleSuggestOrder,
@@ -104,6 +106,19 @@ export function PhotoSection({
         <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           △ 사진이 추가/삭제되어 순서·대표사진·제외 추천이 최신 상태가 아닐 수 있습니다. &quot;사진
           순서/대표사진 추천&quot;을 다시 실행해주세요.
+        </p>
+      )}
+
+      {/* 사진 추가 / AI 사진 분석 / 순서·대표사진 추천 실패. usePhotoManager가
+          이미 설정하던 error를 표시할 뿐이며, 다음 시도가 시작되면 스스로
+          지워진다. PhotoSelectPanel의 selectError와 같은 모양. */}
+      {error && (
+        <p
+          role="alert"
+          className="mt-3 flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+        >
+          <XIcon size={13} className="mt-0.5 shrink-0" />
+          <span className="whitespace-pre-wrap">{error}</span>
         </p>
       )}
 
