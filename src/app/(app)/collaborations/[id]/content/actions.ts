@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CONTENT_STATUSES } from "@/lib/content-status";
 import { getPlanConfig } from "@/lib/plans";
+import { isUnlimitedUser } from "@/lib/entitlements";
 import type { ContentPlatformKey } from "@/lib/ai/prompts";
 import type { ContentStatus } from "@/types/database";
 
@@ -29,7 +30,10 @@ export async function saveContent(input: {
   // Downgrading never deletes existing contents, but a plan's storage limit
   // does block creating NEW ones once at/over it (STEP29).
   const { data: profile } = await supabase.from("users").select("plan_tier").eq("id", user.id).maybeSingle();
-  const maxContents = getPlanConfig(profile?.plan_tier).maxContents;
+  // STEP48: unlimited owner accounts have no save cap (null = unlimited).
+  const maxContents = (await isUnlimitedUser(supabase, user.id))
+    ? null
+    : getPlanConfig(profile?.plan_tier).maxContents;
   if (maxContents !== null) {
     const { count } = await supabase
       .from("contents")

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { UPLOAD_PLATFORMS } from "@/lib/upload-platforms";
 import { getPlanConfig } from "@/lib/plans";
+import { isUnlimitedUser } from "@/lib/entitlements";
 import type { ProvisionType } from "@/types/database";
 
 export type CreateCollaborationState = { error: string } | null;
@@ -41,7 +42,10 @@ export async function createCollaboration(
   // Downgrading never deletes existing collaborations, but a plan's storage
   // limit does block creating NEW ones once at/over it (STEP29).
   const { data: profile } = await supabase.from("users").select("plan_tier").eq("id", user.id).maybeSingle();
-  const maxCollaborations = getPlanConfig(profile?.plan_tier).maxCollaborations;
+  // STEP48: unlimited owner accounts have no save cap (null = unlimited).
+  const maxCollaborations = (await isUnlimitedUser(supabase, user.id))
+    ? null
+    : getPlanConfig(profile?.plan_tier).maxCollaborations;
   if (maxCollaborations !== null) {
     const { count } = await supabase
       .from("collaborations")

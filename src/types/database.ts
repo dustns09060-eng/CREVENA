@@ -85,6 +85,9 @@ export type Database = {
           last_payment_failed_at: string | null;
           last_payment_error_type: string | null;
           scheduled_plan: string | null;
+          // STEP48: owner/operator entitlement (migration 0027). Read-only for
+          // users: no UPDATE grant exists for it (0007 column allow-list).
+          is_unlimited: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -107,6 +110,7 @@ export type Database = {
           last_payment_failed_at?: string | null;
           last_payment_error_type?: string | null;
           scheduled_plan?: string | null;
+          is_unlimited?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -129,6 +133,7 @@ export type Database = {
           last_payment_failed_at?: string | null;
           last_payment_error_type?: string | null;
           scheduled_plan?: string | null;
+          is_unlimited?: boolean;
           created_at?: string;
           updated_at?: string;
         };
