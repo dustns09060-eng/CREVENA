@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { getAiLimitsForPlan } from "./plan-limits";
+import { UNLIMITED_RATE_LIMIT_PER_MINUTE, isUnlimitedUser } from "@/lib/entitlements";
 
 export type UsageCheckResult =
   | { allowed: true; reservationId: string }
@@ -29,6 +30,12 @@ export async function checkAndConsumeAiCredits(
   creditsNeeded: number,
 ): Promise<UsageCheckResult> {
   const limits = getAiLimitsForPlan(planTier);
+  // STEP48: unlimited owner accounts skip the monthly credit budget only.
+  // The credit RPC below still records usage and a refundable reservation
+  // (it re-reads the flag from the database itself, so nothing here can
+  // grant it), and the burst rate limit stays on — see entitlements.ts.
+  const unlimited = await isUnlimitedUser(supabase, userId);
+  const rateLimitPerMinute = unlimited ? UNLIMITED_RATE_LIMIT_PER_MINUTE : limits.rateLimitPerMinute;
 
   const since = new Date(Date.now() - 60_000).toISOString();
   const { count } = await supabase
@@ -37,7 +44,7 @@ export async function checkAndConsumeAiCredits(
     .eq("user_id", userId)
     .gte("created_at", since);
 
-  if ((count ?? 0) >= limits.rateLimitPerMinute) {
+  if ((count ?? 0) >= rateLimitPerMinute) {
     return {
       allowed: false,
       reason: "RATE_LIMIT",
