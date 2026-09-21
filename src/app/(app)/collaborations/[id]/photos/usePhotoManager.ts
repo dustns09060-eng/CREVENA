@@ -50,6 +50,17 @@ export type PhotoSelectProgress = {
 
 export type PhotoAnalyzeFailure = { id: string; filename: string | null };
 
+// The AI/upload routes and server actions already answer failures with a
+// user-facing Korean message, so that message is shown as-is. Anything else
+// that can reach a catch block — a network TypeError ("Failed to fetch"), a
+// JSON SyntaxError from an HTML error page, provider text — is technical and
+// is replaced by the caller's own Korean fallback instead of being shown.
+function userFacingPhotoError(err: unknown, fallback: string): string {
+  const message = err instanceof Error ? err.message.trim() : "";
+  const looksUserFacing = message.length > 0 && message.length <= 300 && /[가-힣]/.test(message) && !/[{}]/.test(message);
+  return looksUserFacing ? message : fallback;
+}
+
 export type PhotoSelectRunArgs = {
   brandName: string;
   productName: string;
@@ -177,7 +188,7 @@ export function usePhotoManager(
       }
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "업로드에 실패했습니다.");
+      setError(userFacingPhotoError(err, "업로드에 실패했습니다."));
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -213,7 +224,7 @@ export function usePhotoManager(
       }
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "사진 분석에 실패했습니다.");
+      setError(userFacingPhotoError(err, "사진 분석에 실패했습니다."));
       throw err;
     } finally {
       setAnalyzing(false);
@@ -276,7 +287,7 @@ export function usePhotoManager(
       await reorderPhotos(collaborationId, finalOrder.map((p) => p.id));
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "순서 추천에 실패했습니다.");
+      setError(userFacingPhotoError(err, "순서 추천에 실패했습니다."));
       throw err;
     } finally {
       setOrdering(false);
