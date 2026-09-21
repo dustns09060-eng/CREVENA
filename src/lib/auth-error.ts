@@ -2,10 +2,18 @@
 // real signup/login screen hits to Korean so users aren't shown raw English.
 const KNOWN_AUTH_ERRORS: { match: (msg: string) => boolean; ko: string }[] = [
   {
-    // Migration 0030: handle_new_user() raises when the signup consent
-    // metadata is missing/invalid; GoTrue surfaces any failing signup
-    // trigger with this generic message. The signup form never sends such a
-    // request, so this only appears for a stale page or a bypassed client.
+    // Migration 0030: handle_new_user() raises `signup_consent_required` when
+    // the signup consent metadata is missing/invalid. Observed against the
+    // real Supabase Auth (production, 2026-09-22): HTTP 500, error code
+    // P0001, message "signup_consent_required" — GoTrue passes our exception
+    // text through as-is. The signup form never sends such a request, so this
+    // only appears for a stale page or a bypassed client.
+    match: (m) => m.includes("signup_consent_required"),
+    ko: "회원가입을 위해 필수 항목에 모두 동의해 주세요.",
+  },
+  {
+    // Kept as a fallback: GoTrue reports OTHER failing signup triggers/DB
+    // errors with this generic message.
     match: (m) => m.includes("Database error saving new user"),
     ko: "회원가입을 완료하지 못했어요. 필수 동의 항목을 확인한 뒤 페이지를 새로 고치고 다시 시도해주세요.",
   },
