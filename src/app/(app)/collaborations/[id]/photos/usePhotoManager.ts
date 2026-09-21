@@ -17,10 +17,8 @@ import {
   parseJsonResponse,
   type PhotoSummary,
 } from "@/lib/ai/photo-blog-prompts";
-import {
-  buildPhotoSelectPrompt,
-  type PhotoSelectResponse,
-} from "@/lib/ai/photo-select-prompts";
+import { buildPhotoSelectPrompt } from "@/lib/ai/photo-select-prompts";
+import { decodePhotoOrderResponse, decodePhotoSelectResponse } from "@/lib/ai/photo-alias";
 import {
   EMPTY_PHOTO_SELECTION,
   applyPhotoSelectRun,
@@ -237,19 +235,17 @@ export function usePhotoManager(
         photoType: p.photo_type,
         description: p.ai_analysis ?? "(분석 전)",
       }));
-      const { systemPrompt, prompt, responseSchema } = buildPhotoOrderPrompt(summaries);
+      const { systemPrompt, prompt, responseSchema, aliasMap } = buildPhotoOrderPrompt(summaries);
       const res = await fetch("/api/ai/suggest-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ systemPrompt, prompt, collaborationId, responseSchema }),
+        body: JSON.stringify({ systemPrompt, prompt, collaborationId, responseSchema, photoAliasCount: aliasMap.count }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "요청에 실패했습니다.");
-      const parsed = parseJsonResponse<{
-        order: string[];
-        primaryPhotoId?: string;
-        excludePhotoIds?: string[];
-      }>(data.content);
+      // STEP47-3: the model answered in aliases (p1..pN); this maps every
+      // reference back to a real photo id and throws on any unknown one.
+      const parsed = decodePhotoOrderResponse(parseJsonResponse<unknown>(data.content), aliasMap);
 
       const byId = new Map(photos.map((p) => [p.id, p]));
       const reordered = parsed.order.map((id) => byId.get(id)).filter(Boolean) as PhotoWithUrl[];
@@ -393,7 +389,7 @@ export function usePhotoManager(
         throw new Error("모든 사진이 제외되어 있습니다. 제외를 해제한 뒤 다시 시도해주세요.");
       }
 
-      const { systemPrompt, prompt, responseSchema } = buildPhotoSelectPrompt({
+      const { systemPrompt, prompt, responseSchema, aliasMap } = buildPhotoSelectPrompt({
         brandName: args.brandName,
         productName: args.productName,
         guideRawContent: args.guideRawContent,
@@ -419,11 +415,14 @@ export function usePhotoManager(
       const res = await fetch("/api/ai/suggest-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ systemPrompt, prompt, collaborationId, responseSchema }),
+        body: JSON.stringify({ systemPrompt, prompt, collaborationId, responseSchema, photoAliasCount: aliasMap.count }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "사진 추천에 실패했습니다.");
-      const parsed = parseJsonResponse<PhotoSelectResponse>(data.content);
+      // STEP47-3: aliases (p1..pN) -> real photo ids, strictly. Any unknown
+      // alias / broken structure throws BEFORE anything is committed or
+      // saved, so a bad response can never overwrite a good photo_select.
+      const parsed = decodePhotoSelectResponse(parseJsonResponse<unknown>(data.content), aliasMap);
 
       const run: PhotoSelectRun = {
         generatedAt: new Date().toISOString(),

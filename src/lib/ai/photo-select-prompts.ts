@@ -5,6 +5,7 @@ import type { ReviewNotes } from "./prompts";
 import type { GuideAnalysis } from "./guide-analysis-prompts";
 import { PHOTO_SELECT_ROLES } from "@/lib/photo-select";
 import type { ResponseSchema } from "./types";
+import { createPhotoAliasMap } from "./photo-alias";
 
 // STEP47: AI Photo Select — "이 협찬에서 실제로 쓸 사진 고르기".
 //
@@ -63,7 +64,7 @@ export const photoSelectSchema: ResponseSchema = {
       selectedPhotoIds: {
         type: "array",
         items: { type: "string" },
-        description: "콘텐츠에 실제로 쓰기를 추천하는 photoId 목록 (추천 순서대로)",
+        description: "콘텐츠에 실제로 쓰기를 추천하는 photoId(p1 형식) 목록 (추천 순서대로)",
       },
       coverCandidateIds: {
         type: "array",
@@ -130,12 +131,18 @@ export type PhotoSelectResponse = {
 };
 
 export function buildPhotoSelectPrompt(input: PhotoSelectInput) {
+  // STEP47-3: the model only ever sees p1, p2, ... (see photo-alias.ts). The
+  // photo list order is the alias order; excluded photos that aren't in the
+  // list get aliases after it so the "제외" line can still name them.
+  const aliasMap = createPhotoAliasMap([...input.photos.map((p) => p.id), ...input.excludedPhotoIds]);
+  const alias = (id: string) => aliasMap.aliasOf(id) ?? id;
+
   const systemPrompt = [
     "너는 인플루언서가 협찬 콘텐츠에 실제로 사용할 사진을 골라주는 어시스턴트다.",
     NO_FABRICATION_RULE,
     "",
     "## 절대 규칙",
-    "1. photoId는 아래 '사진 목록'에 실제로 있는 id만 써라. 없는 id를 새로 만들어내면 안 된다.",
+    "1. photoId는 아래 '사진 목록'에 적힌 짧은 번호(p1, p2, ...)만 써라. 목록에 없는 번호를 새로 만들어내거나 다른 형태의 id를 쓰면 안 된다.",
     "2. 사용자가 '꼭 사용'으로 지정한 사진은 무조건 selectedPhotoIds에 포함하라.",
     "3. 사용자가 '제외'로 지정한 사진은 어떤 필드에도 절대 넣지 마라.",
     "4. 가이드가 요구하는 필수 컷에 해당하는 사진이 실제로 없으면 status를 NOT_FOUND로 정직하게 보고하라. 애매한 사진을 억지로 끼워 맞춰 MATCHED로 만들지 마라. 비슷하지만 확신이 없으면 CANDIDATE다.",
@@ -171,7 +178,7 @@ export function buildPhotoSelectPrompt(input: PhotoSelectInput) {
   const photoLines = input.photos
     .map(
       (p) =>
-        `- photoId: ${p.id} | 업로드순서: ${p.position} | 유형: ${p.photoType ?? "미분류"}${
+        `- photoId: ${alias(p.id)} | 업로드순서: ${p.position} | 유형: ${p.photoType ?? "미분류"}${
           p.hasEdit ? " | 보정본 있음" : ""
         } | AI 분석: ${p.description}${p.memo ? ` | 사용자 메모: ${p.memo}` : ""}`,
     )
@@ -195,13 +202,13 @@ export function buildPhotoSelectPrompt(input: PhotoSelectInput) {
     photoLines || "(없음)",
     "",
     "## 사용자가 '꼭 사용'으로 지정한 사진 (무조건 포함)",
-    input.pinnedPhotoIds.length > 0 ? input.pinnedPhotoIds.join(", ") : "(없음)",
+    input.pinnedPhotoIds.length > 0 ? input.pinnedPhotoIds.map(alias).join(", ") : "(없음)",
     "",
     "## 사용자가 '제외'로 지정한 사진 (절대 포함 금지, 위 목록에서도 제거됨)",
-    input.excludedPhotoIds.length > 0 ? input.excludedPhotoIds.join(", ") : "(없음)",
+    input.excludedPhotoIds.length > 0 ? input.excludedPhotoIds.map(alias).join(", ") : "(없음)",
     "",
     "위 정보를 바탕으로 실제로 사용할 사진을 추천해줘.",
   ];
 
-  return { systemPrompt, prompt: promptParts.join("\n"), responseSchema: photoSelectSchema };
+  return { systemPrompt, prompt: promptParts.join("\n"), responseSchema: photoSelectSchema, aliasMap };
 }

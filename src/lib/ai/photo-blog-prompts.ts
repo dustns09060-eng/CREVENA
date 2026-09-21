@@ -2,6 +2,7 @@ import type { PhotoType } from "@/types/database";
 import { PHOTO_TYPES } from "@/lib/photo-type";
 import type { ReviewNotes, StyleSample } from "./prompts";
 import type { ResponseSchema } from "./types";
+import { createPhotoAliasMap } from "./photo-alias";
 
 export function parseJsonResponse<T>(text: string): T {
   const cleaned = text
@@ -109,13 +110,15 @@ export function buildPhotoOrderPrompt(photos: PhotoSummary[]) {
     "추천 결과는 submit_photo_order 도구를 호출해서 제출하라.",
   ].join("\n");
 
+  // STEP47-3: aliased ids (p1, p2, ...) — see photo-alias.ts.
+  const aliasMap = createPhotoAliasMap(photos.map((p) => p.id));
   const list = photos
-    .map((p) => `- id: ${p.id}, 유형: ${p.photoType ?? "미분류"}, 설명: ${p.description}`)
+    .map((p) => `- id: ${aliasMap.aliasOf(p.id)}, 유형: ${p.photoType ?? "미분류"}, 설명: ${p.description}`)
     .join("\n");
 
   const prompt = `아래 사진 목록을 블로그 글 흐름에 맞는 순서로 정렬하고, 대표사진과 제외 추천 사진을 알려줘.\n\n${list}`;
 
-  return { systemPrompt, prompt, responseSchema: photoOrderSchema };
+  return { systemPrompt, prompt, responseSchema: photoOrderSchema, aliasMap };
 }
 
 export type PhotoBlogInput = {

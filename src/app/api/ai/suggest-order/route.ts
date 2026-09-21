@@ -4,6 +4,7 @@ import { getAIProvider, type ResponseSchema } from "@/lib/ai";
 import { logAiUsage, classifyErrorType, GENERIC_AI_FAILURE_MESSAGE } from "@/lib/ai/usage";
 import { checkAndConsumeAiCredits, refundAiCredits } from "@/lib/ai/usage-limits";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
+import { PhotoAliasError, assertAliasedResponseValid, MAX_PHOTO_ALIAS_COUNT } from "@/lib/ai/photo-alias";
 
 function isResponseSchema(value: unknown): value is ResponseSchema {
   return (
@@ -49,6 +50,15 @@ const STOP_REASON_MAX_TOKENS = "max_tokens";
 const TRUNCATED_ERROR_TYPE = "OUTPUT_TRUNCATED";
 const TRUNCATED_USER_MESSAGE =
   "사진이 많아 AI 추천 결과를 완성하지 못했어요.\n사용한 크레딧은 자동으로 복구되었습니다.\n다시 시도해 주세요.";
+
+// STEP47-3: photo references in this route's responses are short aliases
+// (p1..pN, see src/lib/ai/photo-alias.ts). A response that references an
+// alias that doesn't exist, isn't an alias at all, or is structurally broken
+// is NOT a success: same path as truncation — refund, failed log, nothing
+// for the client to save.
+const INVALID_ERROR_TYPE = "OUTPUT_INVALID";
+const INVALID_USER_MESSAGE =
+  "AI 추천 결과를 확인하지 못했어요.\n사용한 크레딧은 자동으로 복구되었습니다.\n다시 시도해 주세요.";
 
 class OutputTruncatedError extends Error {
   constructor(
@@ -107,6 +117,12 @@ export async function POST(request: Request) {
   }
 
   const responseSchema = isResponseSchema(body?.responseSchema) ? body.responseSchema : undefined;
+  // Only a bounded positive integer counts; anything else (older cached
+  // clients that still send raw ids) simply skips alias validation.
+  const aliasCount =
+    Number.isInteger(body?.photoAliasCount) && body.photoAliasCount >= 1 && body.photoAliasCount <= MAX_PHOTO_ALIAS_COUNT
+      ? (body.photoAliasCount as number)
+      : null;
 
   try {
     const aiProvider = getAIProvider();
@@ -131,6 +147,11 @@ export async function POST(request: Request) {
       }
     }
 
+    if (responseSchema && aliasCount !== null) {
+      // Throws PhotoAliasError — handled below like any other failed call.
+      assertAliasedResponseValid(responseSchema.name, content, aliasCount);
+    }
+
     await logAiUsage(supabase, {
       userId: user.id,
       collaborationId,
@@ -147,8 +168,12 @@ export async function POST(request: Request) {
   } catch (error) {
     await refundAiCredits(supabase, usageCheck.reservationId);
     const truncated = error instanceof OutputTruncatedError;
-    const errorType = truncated ? TRUNCATED_ERROR_TYPE : classifyErrorType(error);
-    if (truncated) {
+    const invalid = error instanceof PhotoAliasError;
+    const errorType = truncated ? TRUNCATED_ERROR_TYPE : invalid ? INVALID_ERROR_TYPE : classifyErrorType(error);
+    if (invalid) {
+      // Which part of the response was bad, never its content.
+      console.error(`[/api/ai/suggest-order] 실패 (${errorType}): field=${error.field} aliasCount=${aliasCount}`);
+    } else if (truncated) {
       // Only numbers — never the partial content, prompt, or photo ids.
       console.error(
         `[/api/ai/suggest-order] 실패 (${errorType}): inputTokens=${error.inputTokens} outputTokens=${error.outputTokens} maxTokens=${error.maxTokens}`,
@@ -171,6 +196,9 @@ export async function POST(request: Request) {
       outputTokens: truncated ? error.outputTokens : null,
       creditsUsed: 0,
     });
+    if (invalid) {
+      return NextResponse.json({ error: INVALID_USER_MESSAGE }, { status: 422 });
+    }
     return NextResponse.json(
       { error: truncated ? TRUNCATED_USER_MESSAGE : GENERIC_AI_FAILURE_MESSAGE },
       { status: truncated ? 422 : 500 },
