@@ -603,6 +603,10 @@ export type Database = {
         Args: { p_start: string; p_end: string };
         Returns: AdminUsageGroupedRow[];
       };
+      admin_list_orphaned_refundable_payments: {
+        Args: Record<string, never>;
+        Returns: AdminOrphanedPaymentRow[];
+      };
       admin_apply_subscription: {
         Args: {
           p_user_id: string;
@@ -736,6 +740,20 @@ export type AdminRefundEntry = {
   reason: string | null;
   status: "PENDING" | "SUCCEEDED" | "FAILED";
   created_at: string;
+};
+
+// A PAID payment_events row whose user_id was SET NULL by a withdrawal
+// (migration 0024) and that still has a refundable balance. No user
+// identity fields exist here — there is none left to return.
+export type AdminOrphanedPaymentRow = {
+  id: string;
+  payment_id: string;
+  amount: number;
+  status: "PENDING" | "PAID" | "FAILED";
+  kind: "INITIAL" | "RECURRING";
+  created_at: string;
+  refunded_amount: number;
+  remaining_amount: number;
 };
 
 export type AdminUsageGroupedRow = {

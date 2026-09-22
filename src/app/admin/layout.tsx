@@ -6,6 +6,7 @@ const ADMIN_NAV = [
   { href: "/admin", label: "대시보드" },
   { href: "/admin/users", label: "사용자" },
   { href: "/admin/usage", label: "AI 사용량/비용" },
+  { href: "/admin/orphaned-payments", label: "탈퇴 회원 결제" },
 ] as const;
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
