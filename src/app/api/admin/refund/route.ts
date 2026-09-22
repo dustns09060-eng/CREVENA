@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { getPortOnePaymentClient } from "@/lib/billing/portone-server";
 import { shouldTerminateAccessOnRefund } from "@/lib/billing/refund-policy";
+import { revokeBillingKeyForUser } from "@/lib/billing/revoke-billing-key";
 
 function extractPaymentError(error: unknown): string {
   const data = (error as { data?: { type?: unknown } } | null | undefined)?.data;
@@ -154,6 +155,10 @@ export async function POST(request: Request) {
           retry_count: 0,
         })
         .eq("id", paymentUserId);
+      // Access ended, so the card token must not outlive it. A failure is
+      // recorded on the user row and retried by the billing cron; it does not
+      // change the refund result.
+      await revokeBillingKeyForUser(service, paymentUserId);
     }
 
     return NextResponse.json({ ok: true });

@@ -3,6 +3,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { getPortOnePaymentClient } from "@/lib/billing/portone-server";
 import { PLAN_CONFIGS, normalizePlanTier } from "@/lib/plans";
+import { buildFailureSnapshot, buildPaymentSnapshot } from "@/lib/billing/payment-snapshot";
+import type { Json } from "@/types/database";
 
 const PAYABLE_PLANS = ["BASIC", "PRO"] as const;
 type PayablePlan = (typeof PAYABLE_PLANS)[number];
@@ -92,11 +94,11 @@ export async function POST(request: Request) {
     );
   }
 
-  async function markFailed(reason: string, raw?: unknown) {
-    await service
-      .from("payment_events")
-      .update({ status: "FAILED", raw_response: raw ? JSON.parse(JSON.stringify(raw)) : null })
-      .eq("payment_id", paymentId);
+  // `snapshot` is always built by payment-snapshot.ts (an allowlist): the
+  // ledger must never receive a raw provider object (billing key, customer id,
+  // PG response, card number).
+  async function markFailed(reason: string, snapshot: Json) {
+    await service.from("payment_events").update({ status: "FAILED", raw_response: snapshot }).eq("payment_id", paymentId);
     return NextResponse.json({ error: reason }, { status: 402 });
   }
 
@@ -118,12 +120,13 @@ export async function POST(request: Request) {
     const verified = await paymentClient.getPayment({ paymentId });
 
     if (verified.status !== "PAID" || verified.amount.total !== amount) {
-      return await markFailed("결제 검증에 실패했습니다.", { chargeResult, verified });
+      void chargeResult; // deliberately not stored: only the re-fetched, verified payment is snapshotted
+      return await markFailed("결제 검증에 실패했습니다.", buildPaymentSnapshot(verified));
     }
 
     await service
       .from("payment_events")
-      .update({ status: "PAID", raw_response: JSON.parse(JSON.stringify(verified)) })
+      .update({ status: "PAID", raw_response: buildPaymentSnapshot(verified) })
       .eq("payment_id", paymentId);
 
     const now = new Date();
@@ -151,8 +154,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const rawMessage = error instanceof Error ? error.message : String(error);
-    console.error("confirm-payment: charge failed", rawMessage);
-    return await markFailed("결제에 실패했습니다. 카드 정보를 확인한 뒤 다시 시도해주세요.", error instanceof Error ? { message: rawMessage } : error);
+    // Category only: the provider's error text can echo request fields.
+    const failure = buildFailureSnapshot("CHARGE_ERROR", error);
+    console.error("confirm-payment: charge failed", failure);
+    return await markFailed("결제에 실패했습니다. 카드 정보를 확인한 뒤 다시 시도해주세요.", failure);
   }
 }
