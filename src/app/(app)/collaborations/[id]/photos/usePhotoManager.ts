@@ -324,7 +324,7 @@ export function usePhotoManager(
       return next;
     });
     setAnalyzeFailures((prev) => prev.filter((f) => f.id !== photo.id));
-    await deletePhoto(collaborationId, photo.id, photo.storage_path, photo.thumbnail_path);
+    await deletePhoto(collaborationId, photo.id);
     router.refresh();
   }
 
