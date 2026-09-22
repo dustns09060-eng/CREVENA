@@ -88,6 +88,10 @@ export type Database = {
           // STEP48: owner/operator entitlement (migration 0027). Read-only for
           // users: no UPDATE grant exists for it (0007 column allow-list).
           is_unlimited: boolean;
+          // Migration 0031: billing-key revocation bookkeeping (server-side only;
+          // not readable or writable by signed-in users).
+          billing_key_revoked_at: string | null;
+          billing_key_revoke_error: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -111,6 +115,8 @@ export type Database = {
           last_payment_error_type?: string | null;
           scheduled_plan?: string | null;
           is_unlimited?: boolean;
+          billing_key_revoked_at?: string | null;
+          billing_key_revoke_error?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -134,6 +140,8 @@ export type Database = {
           last_payment_error_type?: string | null;
           scheduled_plan?: string | null;
           is_unlimited?: boolean;
+          billing_key_revoked_at?: string | null;
+          billing_key_revoke_error?: string | null;
           created_at?: string;
           updated_at?: string;
         };

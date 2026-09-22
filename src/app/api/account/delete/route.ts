@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
+import { revokeBillingKeyForUser } from "@/lib/billing/revoke-billing-key";
 
 // STEP45.1: 회원탈퇴 (account deletion).
 //
@@ -109,11 +110,13 @@ export async function POST() {
     );
   }
 
-  // Active paid subscription guard. A live billing key must never be left
-  // behind by an account deletion, and this step deliberately builds no new
-  // payment logic: the user must first go through the EXISTING cancellation
-  // flow (/api/billing/cancel-subscription, surfaced in /settings/billing).
-  // Nothing here calls PortOne, cancels, or refunds anything.
+  // Active paid subscription guard: the user must first go through the
+  // EXISTING cancellation flow (/api/billing/cancel-subscription, surfaced in
+  // /settings/billing). This route never cancels or refunds anything.
+  //
+  // A live billing key must never be left behind by an account deletion, so
+  // once the guard passes any key still on the account is deleted at PortOne
+  // BEFORE anything is removed (see revokeBillingKeyForUser below).
   const hasLiveSubscription =
     profile.plan_tier !== "FREE" &&
     ["ACTIVE", "PAST_DUE"].includes(profile.subscription_status) &&
@@ -126,6 +129,19 @@ export async function POST() {
         code: "SUBSCRIPTION_ACTIVE",
       },
       { status: 409 },
+    );
+  }
+
+  // Delete the member's stored card token at PortOne. If that fails, stop
+  // here with the account still intact: once the account row is gone the key
+  // could never be found again, so it must not be left behind. Members
+  // without a key never reach PortOne (the helper makes no call for them).
+  const keyRevoke = await revokeBillingKeyForUser(service, user.id);
+  if (keyRevoke === "FAILED") {
+    logFailure(user.id, "billing_key_revoke", "BILLING_KEY_REVOKE_FAILED");
+    return NextResponse.json(
+      { error: "정기결제 정보를 정리하지 못해 탈퇴를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요." },
+      { status: 502 },
     );
   }
 

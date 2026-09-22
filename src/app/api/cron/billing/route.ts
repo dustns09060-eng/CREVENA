@@ -3,6 +3,7 @@ import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { getPortOnePaymentClient } from "@/lib/billing/portone-server";
 import { PLAN_CONFIGS, normalizePlanTier } from "@/lib/plans";
 import { getNextRetryDelayDays } from "@/lib/billing/retry-policy";
+import { revokeBillingKeyForUser, type RevokeOutcome } from "@/lib/billing/revoke-billing-key";
 
 const BATCH_SIZE = 50;
 
@@ -37,6 +38,24 @@ async function runBillingCycle(request: Request) {
   const service = createSupabaseServiceClient();
   const nowIso = new Date().toISOString();
 
+  // Retry billing-key deletions that already FAILED once (marked in
+  // billing_key_revoke_error by revoke-billing-key.ts). Deliberately limited to
+  // those rows: an old FREE account that merely still holds a key from before
+  // this existed is NOT revoked automatically — that is an operator decision.
+  // A problem here must never stop the billing cycle below.
+  try {
+    const { data: retry } = await service
+      .from("users")
+      .select("id")
+      .eq("plan_tier", "FREE")
+      .not("payment_subscription_id", "is", null)
+      .not("billing_key_revoke_error", "is", null)
+      .limit(20);
+    for (const row of retry ?? []) await revokeBillingKeyForUser(service, row.id);
+  } catch {
+    console.error("[billing-cron] step=key_revoke_retry result=SWEEP_FAILED");
+  }
+
   const { data: due, error: dueError } = await service
     .from("users")
     .select(
@@ -52,7 +71,7 @@ async function runBillingCycle(request: Request) {
     return NextResponse.json({ error: "청구 대상 조회 실패" }, { status: 500 });
   }
 
-  const results: { userId: string; outcome: string }[] = [];
+  const results: { userId: string; outcome: string; keyRevoke?: RevokeOutcome }[] = [];
 
   for (const sub of due ?? []) {
     // A cancelled subscription reaching its period end: no charge, just
@@ -73,7 +92,10 @@ async function runBillingCycle(request: Request) {
           subscription_expires_at: null,
         })
         .eq("id", sub.id);
-      results.push({ userId: sub.id, outcome: "CANCELED_TO_FREE" });
+      // The subscription is over: delete the card token at PortOne too. A
+      // failure here does not undo the downgrade; it is recorded and retried.
+      const keyRevoke = await revokeBillingKeyForUser(service, sub.id);
+      results.push({ userId: sub.id, outcome: "CANCELED_TO_FREE", keyRevoke });
       continue;
     }
 
@@ -134,7 +156,8 @@ async function runBillingCycle(request: Request) {
             last_payment_error_type: errorType,
           })
           .eq("id", sub.id);
-        results.push({ userId: sub.id, outcome: "EXPIRED" });
+        const keyRevoke = await revokeBillingKeyForUser(service, sub.id);
+        results.push({ userId: sub.id, outcome: "EXPIRED", keyRevoke });
       } else {
         const nextRetryAt = new Date(Date.now() + delayDays * 24 * 60 * 60 * 1000);
         await service

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { UsageBadge } from "./UsageBadge";
 import { MobileHeader } from "./MobileHeader";
+import { PaymentStatusBanner } from "./PaymentStatusBanner";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -13,7 +14,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <UsageBadge />
         </div>
       </aside>
-      <main className="flex-1 p-4 md:p-8">{children}</main>
+      <main className="flex-1 p-4 md:p-8">
+        <PaymentStatusBanner />
+        {children}
+      </main>
     </div>
   );
 }
