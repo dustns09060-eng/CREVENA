@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { deleteCollaborationPhoto } from "@/lib/photos/delete-photo";
 
 const BUCKET = "collaboration-photos";
 
@@ -110,16 +111,15 @@ export async function updatePhotoBodyManual(collaborationId: string, photoId: st
   revalidatePath(`/collaborations/${collaborationId}/photos`);
 }
 
-export async function deletePhoto(
-  collaborationId: string,
-  photoId: string,
-  storagePath: string,
-  thumbnailPath: string,
-) {
+// Storage paths (original, thumbnail, and — if this photo was edited —
+// edited_storage_path/edited_thumbnail_path) are read from the DB row
+// itself inside deleteCollaborationPhoto, not passed in here, so a caller
+// can never point this at another user's files. See src/lib/photos/delete-photo.ts.
+export async function deletePhoto(collaborationId: string, photoId: string) {
   const supabase = await createSupabaseServerClient();
-  await supabase.storage.from(BUCKET).remove([storagePath, thumbnailPath]);
-  await supabase.from("collaboration_photos").delete().eq("id", photoId);
+  const result = await deleteCollaborationPhoto(supabase, photoId);
   revalidatePath(`/collaborations/${collaborationId}/photos`);
+  return result;
 }
 
 // STEP36 item 2: also persists the structured blogMeta (title/intro/closing/
