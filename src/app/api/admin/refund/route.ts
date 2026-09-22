@@ -15,6 +15,16 @@ function extractPaymentError(error: unknown): string {
 // SUCCEEDED refunds) is recomputed here from payment_events/payment_refunds
 // before ever calling PortOne, so a manipulated amount can at most be
 // rejected, never allowed to over-refund.
+//
+// Handles two cases with the SAME core logic (amount validation, idempotency,
+// PortOne cancel, refund-row bookkeeping): a normal member's payment
+// (paymentEvent.user_id present) and a withdrawn member's preserved payment
+// (paymentEvent.user_id is NULL since migration 0024). They diverge only
+// after a successful refund — a withdrawn member has no account row left,
+// so nothing plan/subscription/credit/billing-key-related ever runs for
+// them (see the `if (paymentUserId)` guard below). The admin screen that
+// finds withdrawn-member payments to refund is
+// admin_list_orphaned_refundable_payments() (migration 0032).
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -57,20 +67,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "환불 가능한 결제가 아닙니다." }, { status: 400 });
   }
 
-  // STEP45.2: since migration 0024, payment_events.user_id is SET NULL on
-  // account deletion — the transaction record is retained but no longer
-  // points at an account. Such a record cannot be refunded through this
-  // route: there is no plan to downgrade, and `.eq("id", null)` further
-  // down would be a silent no-op rather than a real account update. The
-  // admin UI never surfaces these rows (admin_user_detail is scoped to an
-  // existing user), so this is a defensive guard, not a reachable flow.
+  // STEP45.2 / STEP51: since migration 0024, payment_events.user_id is SET
+  // NULL on account deletion — the transaction record is retained but no
+  // longer points at an account. paymentUserId being null is NOT an error:
+  // it means "refund a withdrawn member's preserved payment", a real,
+  // narrower path (see admin_list_orphaned_refundable_payments in migration
+  // 0032, which is how the admin screen finds these rows in the first
+  // place). Every write below that touches a users row, a plan, credits, or
+  // a billing key is gated on `if (paymentUserId)` further down — a
+  // withdrawn member has no account row left for any of that to apply to.
   const paymentUserId = paymentEvent.user_id;
-  if (!paymentUserId) {
-    return NextResponse.json(
-      { error: "탈퇴한 회원의 결제 건은 화면에서 환불할 수 없습니다. 결제대행사를 통해 직접 처리해 주세요." },
-      { status: 409 },
-    );
-  }
 
   const { data: priorRefunds } = await service
     .from("payment_refunds")
@@ -93,6 +99,10 @@ export async function POST(request: Request) {
   // instead of calling PortOne's cancel API a second time.
   const { error: insertError } = await service.from("payment_refunds").insert({
     payment_event_id: paymentEventId,
+    // NULL for a withdrawn member's payment (paymentUserId already carries
+    // whatever payment_events.user_id held) — the column has allowed NULL
+    // since migration 0024, and requested_by (the acting admin) always
+    // identifies who ran this regardless.
     user_id: paymentUserId,
     refund_amount: requestedAmount,
     reason,
@@ -141,24 +151,31 @@ export async function POST(request: Request) {
       })
       .eq("idempotency_key", idempotencyKey);
 
-    const isFullRefund = alreadyRefunded + requestedAmount >= paymentEvent.amount;
-    if (shouldTerminateAccessOnRefund({ kind: paymentEvent.kind, isFullRefund })) {
-      await service
-        .from("users")
-        .update({
-          plan_tier: "FREE",
-          subscription_status: "NONE",
-          scheduled_plan: null,
-          cancel_at_period_end: false,
-          next_billing_at: null,
-          next_retry_at: null,
-          retry_count: 0,
-        })
-        .eq("id", paymentUserId);
-      // Access ended, so the card token must not outlive it. A failure is
-      // recorded on the user row and retried by the billing cron; it does not
-      // change the refund result.
-      await revokeBillingKeyForUser(service, paymentUserId);
+    // STEP51: a withdrawn member (paymentUserId === null) has no account
+    // row left — no plan_tier to change, no subscription_status to set, no
+    // billing key to revoke, no credits to touch. None of that runs for
+    // them; the refund above is the entire effect. Only an active member
+    // reaches this block, completely unchanged from before this PR.
+    if (paymentUserId) {
+      const isFullRefund = alreadyRefunded + requestedAmount >= paymentEvent.amount;
+      if (shouldTerminateAccessOnRefund({ kind: paymentEvent.kind, isFullRefund })) {
+        await service
+          .from("users")
+          .update({
+            plan_tier: "FREE",
+            subscription_status: "NONE",
+            scheduled_plan: null,
+            cancel_at_period_end: false,
+            next_billing_at: null,
+            next_retry_at: null,
+            retry_count: 0,
+          })
+          .eq("id", paymentUserId);
+        // Access ended, so the card token must not outlive it. A failure is
+        // recorded on the user row and retried by the billing cron; it does not
+        // change the refund result.
+        await revokeBillingKeyForUser(service, paymentUserId);
+      }
     }
 
     return NextResponse.json({ ok: true });
