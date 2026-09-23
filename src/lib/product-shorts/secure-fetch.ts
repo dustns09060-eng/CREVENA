@@ -3,6 +3,7 @@ import http, { type RequestOptions } from "node:http";
 import https from "node:https";
 import type { LookupAddress } from "node:dns";
 import { isBlockedIp, rejectUrlUpfront } from "./ssrf-guard";
+import type { ProductShortsErrorCode } from "./error-codes";
 
 // SSRF-safe HTML fetcher for a user-supplied external URL (product page or
 // candidate image, both go through this — see the PR report's "이미지 URL
@@ -34,7 +35,12 @@ const DEFAULT_MAX_REDIRECTS = 3;
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024; // 2MB — a product page's HTML has no business being bigger
 
-export type SecureFetchResult = { ok: true; html: string; finalUrl: string } | { ok: false; error: string };
+// `detail` is for server-side console logging ONLY — see error-codes.ts.
+// A caller (the route handler) must never put `detail` into an HTTP
+// response.
+export type SecureFetchResult =
+  | { ok: true; html: string; finalUrl: string }
+  | { ok: false; code: ProductShortsErrorCode; detail?: string };
 
 export type SecureFetchDeps = {
   // Injectable for tests only — real callers never pass these. Lets tests
@@ -49,21 +55,21 @@ export type SecureFetchDeps = {
 async function resolveAndValidate(
   hostname: string,
   resolveHostname: NonNullable<SecureFetchDeps["resolveHostname"]>,
-): Promise<{ address: string; family: number } | { error: string }> {
+): Promise<{ address: string; family: number } | { code: ProductShortsErrorCode; detail?: string }> {
   let addresses: LookupAddress[];
   try {
     addresses = await resolveHostname(hostname);
-  } catch {
-    return { error: "호스트를 확인할 수 없습니다." };
+  } catch (e) {
+    return { code: "FETCH_FAILED", detail: `dns lookup failed: ${(e as Error).message}` };
   }
-  if (addresses.length === 0) return { error: "호스트를 확인할 수 없습니다." };
+  if (addresses.length === 0) return { code: "FETCH_FAILED", detail: "dns lookup returned no addresses" };
 
   // Fail closed: if ANY resolved address is blocked, reject the whole
   // hostname rather than only avoiding the bad address — a hostname that
   // resolves to both a public and a private address is itself suspicious
   // (this is exactly the rebinding-adjacent multi-answer pattern).
   for (const { address } of addresses) {
-    if (isBlockedIp(address)) return { error: "허용되지 않은 주소로 확인됩니다." };
+    if (isBlockedIp(address)) return { code: "BLOCKED_DESTINATION" };
   }
   return { address: addresses[0].address, family: addresses[0].family };
 }
@@ -84,16 +90,16 @@ export async function secureFetchHtml(
   try {
     current = new URL(inputUrl);
   } catch {
-    return { ok: false, error: "URL 형식이 올바르지 않습니다." };
+    return { ok: false, code: "INVALID_URL" };
   }
 
   for (let redirectCount = 0; ; redirectCount++) {
     const upfrontError = rejectUrlUpfront(current);
-    if (upfrontError) return { ok: false, error: upfrontError };
-    if (redirectCount > maxRedirects) return { ok: false, error: "리다이렉트 횟수를 초과했습니다." };
+    if (upfrontError) return { ok: false, code: "INVALID_URL", detail: upfrontError };
+    if (redirectCount > maxRedirects) return { ok: false, code: "FETCH_FAILED", detail: "too many redirects" };
 
     const resolved = await resolveAndValidate(current.hostname, resolveHostname);
-    if ("error" in resolved) return { ok: false, error: resolved.error };
+    if ("code" in resolved) return { ok: false, code: resolved.code, detail: resolved.detail };
 
     // The pinned lookup: ignores whatever hostname Node's connection layer
     // asks about and ALWAYS returns the one address we already validated
@@ -129,7 +135,7 @@ export async function secureFetchHtml(
 
     const requestFn = current.protocol === "https:" ? doRequestSecure : doRequest;
     const result = await new Promise<
-      { redirect: string } | { done: true; html: string } | { error: string }
+      { redirect: string } | { done: true; html: string } | { code: ProductShortsErrorCode; detail?: string }
     >((resolvePromise) => {
       const req = requestFn(
         current,
@@ -152,13 +158,13 @@ export async function secureFetchHtml(
           }
           if (status < 200 || status >= 300) {
             res.resume();
-            resolvePromise({ error: `요청이 실패했습니다 (status ${status}).` });
+            resolvePromise({ code: "FETCH_FAILED", detail: `status ${status}` });
             return;
           }
           const contentType = res.headers["content-type"] ?? "";
           if (!contentType.toLowerCase().startsWith("text/html")) {
             res.resume();
-            resolvePromise({ error: "HTML 응답이 아닙니다." });
+            resolvePromise({ code: "UNSUPPORTED_CONTENT", detail: `content-type ${contentType}` });
             return;
           }
           // Refuse compressed responses outright rather than decompressing
@@ -169,7 +175,7 @@ export async function secureFetchHtml(
           // unsolicited.
           if (res.headers["content-encoding"]) {
             res.resume();
-            resolvePromise({ error: "압축 응답은 지원하지 않습니다." });
+            resolvePromise({ code: "UNSUPPORTED_CONTENT", detail: `content-encoding ${res.headers["content-encoding"]}` });
             return;
           }
 
@@ -179,7 +185,7 @@ export async function secureFetchHtml(
             received += chunk.length;
             if (received > maxBytes) {
               req.destroy(new Error("max size exceeded"));
-              resolvePromise({ error: "응답 크기가 너무 큽니다." });
+              resolvePromise({ code: "RESPONSE_TOO_LARGE" });
               return;
             }
             chunks.push(chunk);
@@ -187,16 +193,20 @@ export async function secureFetchHtml(
           res.on("end", () => {
             resolvePromise({ done: true, html: Buffer.concat(chunks).toString("utf-8") });
           });
-          res.on("error", () => resolvePromise({ error: "응답을 읽는 중 오류가 발생했습니다." }));
+          res.on("error", (e) => resolvePromise({ code: "FETCH_FAILED", detail: `response stream error: ${e.message}` }));
         },
       );
       req.on("error", (err) => {
-        resolvePromise({ error: err.name === "AbortError" ? "요청 시간이 초과되었습니다." : "요청에 실패했습니다." });
+        resolvePromise(
+          err.name === "AbortError" || err.name === "TimeoutError"
+            ? { code: "FETCH_TIMEOUT" }
+            : { code: "FETCH_FAILED", detail: err.message },
+        );
       });
       req.end();
     });
 
-    if ("error" in result) return { ok: false, error: result.error };
+    if ("code" in result) return { ok: false, code: result.code, detail: result.detail };
     if ("done" in result) return { ok: true, html: result.html, finalUrl: current.toString() };
 
     // Redirect: resolve relative to the CURRENT url, then loop — every
@@ -206,7 +216,7 @@ export async function secureFetchHtml(
     try {
       current = new URL(result.redirect, current);
     } catch {
-      return { ok: false, error: "리다이렉트 대상 URL이 올바르지 않습니다." };
+      return { ok: false, code: "INVALID_URL", detail: "redirect target unparseable" };
     }
   }
 }

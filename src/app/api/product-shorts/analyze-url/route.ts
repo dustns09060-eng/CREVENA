@@ -28,22 +28,37 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const url = body?.url;
   if (typeof url !== "string" || !url) {
-    return NextResponse.json({ error: "url이 필요합니다." }, { status: 400 });
+    return NextResponse.json({ ok: false, code: "INVALID_URL" }, { status: 400 });
   }
 
-  const fetchResult = await secureFetchHtml(url);
-  if (!fetchResult.ok) {
-    // "상품 정보를 자동으로 불러오지 못했습니다." class of failure — this
-    // must never be treated as a hard error by the caller; the manual-entry
-    // fallback (not built in this slice) is what a real failure routes to.
-    return NextResponse.json({ ok: false, error: fetchResult.error }, { status: 200 });
-  }
+  // Belt-and-braces: even an unexpected exception (a bug, not a designed
+  // failure) must never reach the client as a raw message/stack trace —
+  // everything below funnels through the same fixed code vocabulary.
+  try {
+    const fetchResult = await secureFetchHtml(url);
+    if (!fetchResult.ok) {
+      // Server-side only — `detail` never leaves this function. The client
+      // gets exactly one of the fixed codes in ProductShortsErrorCode,
+      // never upstream error text, a stack trace, or any DNS/IP detail.
+      if (fetchResult.detail) {
+        console.error(`[product-shorts] analyze-url code=${fetchResult.code} detail=${fetchResult.detail}`);
+      }
+      // "상품 정보를 자동으로 불러오지 못했습니다." class of failure — this
+      // must never be treated as a hard error by the caller; the
+      // manual-entry fallback (not built in this slice) is what a real
+      // failure routes to.
+      return NextResponse.json({ ok: false, code: fetchResult.code }, { status: 200 });
+    }
 
-  const finalUrl = new URL(fetchResult.finalUrl);
-  const productSource = parseGenericProductPage(fetchResult.html, finalUrl);
-  if (!productSource) {
-    return NextResponse.json({ ok: false, error: "상품 정보를 찾지 못했습니다." }, { status: 200 });
-  }
+    const finalUrl = new URL(fetchResult.finalUrl);
+    const productSource = parseGenericProductPage(fetchResult.html, finalUrl);
+    if (!productSource) {
+      return NextResponse.json({ ok: false, code: "PRODUCT_NOT_FOUND" }, { status: 200 });
+    }
 
-  return NextResponse.json({ ok: true, productSource });
+    return NextResponse.json({ ok: true, productSource });
+  } catch (error) {
+    console.error("[product-shorts] analyze-url unexpected error", error instanceof Error ? error.message : error);
+    return NextResponse.json({ ok: false, code: "FETCH_FAILED" }, { status: 200 });
+  }
 }
