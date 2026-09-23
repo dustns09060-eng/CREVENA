@@ -13,6 +13,7 @@ import {
   BarChartIcon,
   CreditCardIcon,
   SettingsIcon,
+  ImageIcon,
 } from "@/components/ui/Icon";
 
 const MENU_ITEMS = [
@@ -20,6 +21,9 @@ const MENU_ITEMS = [
   { href: "/collaborations", label: "협찬관리", icon: BriefcaseIcon },
   { href: "/content", label: "콘텐츠 제작", icon: LayersIcon },
   { href: "/content-library", label: "콘텐츠 보관함", icon: ArchiveIcon },
+  // STEP52: 협찬(collaboration)과 무관한 독립 기능이라 /content 밑에
+  // 두지 않고, 다른 최상위 메뉴들과 동일한 레벨에 별도 항목으로 추가.
+  { href: "/product-shorts", label: "상품 판매 숏츠", icon: ImageIcon },
   { href: "/calendar", label: "캘린더", icon: CalendarIcon },
   { href: "/comments-dm", label: "댓글 / DM", icon: MessageCircleIcon },
   { href: "/stats", label: "통계", icon: BarChartIcon },

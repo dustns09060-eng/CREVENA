@@ -17,9 +17,10 @@ import { revokeBillingKeyForUser } from "@/lib/billing/revoke-billing-key";
 // itself is `references auth.users(id) on delete cascade`, so removing the
 // auth user cascades collaborations / contents / photos / videos /
 // schedules / guides / creator_styles / photo_presets / ai_usage_logs /
-// ai_usage_quotas / ai_usage_reservations. Storage objects do NOT cascade
-// (storage.objects has no FK to public.users), which is exactly why they
-// are removed here first.
+// ai_usage_quotas / ai_usage_reservations / product_shorts_projects
+// (which itself cascades to product_shorts_media via migration 0034's
+// composite FK). Storage objects do NOT cascade (storage.objects has no FK
+// to public.users), which is exactly why they are removed here first.
 //
 // STEP45.2 — payment_events / payment_refunds are the deliberate
 // exception. Migration 0024 changes their user_id FK (and
@@ -33,6 +34,13 @@ import { revokeBillingKeyForUser } from "@/lib/billing/revoke-billing-key";
 
 const PHOTO_BUCKET = "collaboration-photos";
 const VIDEO_BUCKET = "collaboration-videos";
+// STEP52: Product Shorts is independent of collaborations (own tables,
+// migration 0034 — product_shorts_projects.user_id already
+// `on delete cascade`s the DB rows), but its Storage bucket doesn't cascade
+// either, same reason PHOTO_BUCKET/VIDEO_BUCKET are cleaned up here
+// explicitly. Uses the exact same cleanup order/failure handling as the two
+// existing buckets — no special-casing.
+const PRODUCT_SHORTS_BUCKET = "product-shorts-media";
 const REMOVE_CHUNK = 100;
 
 // Diagnostic only: a user-id fragment plus operation/category, never the
@@ -155,8 +163,12 @@ export async function POST() {
     .from("collaboration_videos")
     .select("storage_path")
     .eq("user_id", user.id);
+  const { data: productShortsMedia, error: productShortsError } = await service
+    .from("product_shorts_media")
+    .select("storage_path, thumbnail_path, edited_storage_path, edited_thumbnail_path")
+    .eq("user_id", user.id);
 
-  if (photoError || videoError) {
+  if (photoError || videoError || productShortsError) {
     logFailure(user.id, "load_owned_paths", "OWNED_PATH_LOOKUP_FAILED");
     return NextResponse.json(
       { error: "삭제할 파일 목록을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요." },
@@ -183,13 +195,21 @@ export async function POST() {
       videoPaths.add(row.storage_path);
     }
   }
+  const productShortsPaths = new Set<string>();
+  for (const row of productShortsMedia ?? []) {
+    for (const path of [row.storage_path, row.thumbnail_path, row.edited_storage_path, row.edited_thumbnail_path]) {
+      if (path && path.startsWith(`${user.id}/`)) productShortsPaths.add(path);
+    }
+  }
 
   try {
     for (const path of await listOwnedObjects(service, PHOTO_BUCKET, user.id)) photoPaths.add(path);
     for (const path of await listOwnedObjects(service, VIDEO_BUCKET, user.id)) videoPaths.add(path);
+    for (const path of await listOwnedObjects(service, PRODUCT_SHORTS_BUCKET, user.id)) productShortsPaths.add(path);
 
     await removeAll(service, PHOTO_BUCKET, [...photoPaths]);
     await removeAll(service, VIDEO_BUCKET, [...videoPaths]);
+    await removeAll(service, PRODUCT_SHORTS_BUCKET, [...productShortsPaths]);
   } catch {
     // Storage removal failed: stop BEFORE deleting the auth user, so the
     // account still exists and the user can retry, rather than being left
