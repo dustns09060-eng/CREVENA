@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database";
+import { assertNotAccidentallyProduction } from "./production-guard";
 
 // STEP43: "/" becomes a real public marketing landing page instead of an
 // unconditional redirect-to-dashboard, so logged-out visitors can actually
@@ -28,6 +29,7 @@ const PUBLIC_PATHS = ["/login", "/", "/reset-password", "/find-id"];
 const OPEN_PATHS = ["/terms", "/privacy", "/refund-policy", "/contact"];
 
 export async function updateSession(request: NextRequest) {
+  assertNotAccidentallyProduction();
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(
