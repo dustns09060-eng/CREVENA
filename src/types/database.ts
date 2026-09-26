@@ -417,6 +417,78 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["collaboration_videos"]["Insert"]>;
         Relationships: [];
       };
+      product_shorts_projects: {
+        Row: {
+          id: string;
+          user_id: string;
+          source_url: string | null;
+          source_host: string | null;
+          target_duration_seconds: number;
+          product_source: Json;
+          reels_project: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          source_url?: string | null;
+          source_host?: string | null;
+          target_duration_seconds: number;
+          product_source?: Json;
+          reels_project?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["product_shorts_projects"]["Insert"]>;
+        Relationships: [];
+      };
+      product_shorts_media: {
+        Row: {
+          id: string;
+          project_id: string;
+          user_id: string;
+          media_type: string;
+          storage_path: string;
+          thumbnail_path: string | null;
+          edited_storage_path: string | null;
+          edited_thumbnail_path: string | null;
+          ai_analysis: string | null;
+          frame_analysis: Json | null;
+          original_filename: string | null;
+          display_order: number;
+          duration_seconds: number | null;
+          width: number | null;
+          height: number | null;
+          mime_type: string | null;
+          file_size_bytes: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          user_id: string;
+          media_type: string;
+          storage_path: string;
+          thumbnail_path?: string | null;
+          edited_storage_path?: string | null;
+          edited_thumbnail_path?: string | null;
+          ai_analysis?: string | null;
+          frame_analysis?: Json | null;
+          original_filename?: string | null;
+          display_order?: number;
+          duration_seconds?: number | null;
+          width?: number | null;
+          height?: number | null;
+          mime_type?: string | null;
+          file_size_bytes?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["product_shorts_media"]["Insert"]>;
+        Relationships: [];
+      };
       ai_usage_logs: {
         Row: {
           id: string;

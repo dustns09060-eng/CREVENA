@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
+import { assertNotAccidentallyProduction } from "./production-guard";
 
 // SERVER-ONLY. Never import this from a "use client" file, and never send
 // SUPABASE_SERVICE_ROLE_KEY to the browser — it bypasses RLS and the
@@ -12,6 +13,7 @@ import type { Database } from "@/types/database";
 // own secret key) — never based on a client-supplied "it succeeded" claim.
 // As of STEP27 the only caller is src/app/api/billing/confirm-payment.
 export function createSupabaseServiceClient() {
+  assertNotAccidentallyProduction();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {

@@ -1,8 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { Database } from "@/types/database";
+import { assertNotAccidentallyProduction } from "./production-guard";
 
 export async function createSupabaseServerClient() {
+  assertNotAccidentallyProduction();
   const cookieStore = await cookies();
 
   return createServerClient<Database>(
