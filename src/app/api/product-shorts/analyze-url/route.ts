@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { secureFetchHtml } from "@/lib/product-shorts/secure-fetch";
 import { parseGenericProductPage } from "@/lib/product-shorts/parsers/generic";
+import { lookupNaverSelfProduct } from "@/lib/naver-commerce/lookup";
 
 // This route uses node:http/node:https/node:dns directly (see
 // secure-fetch.ts), which the Edge runtime does not support — must run on
@@ -35,6 +36,19 @@ export async function POST(request: Request) {
   // failure) must never reach the client as a raw message/stack trace —
   // everything below funnels through the same fixed code vocabulary.
   try {
+    // SmartStore product URLs go to the official NAVER Commerce API (operator
+    // SELF app) instead of scraping the public page. Anything else continues
+    // to the generic parser below, unchanged. The response carries only a
+    // fixed code on failure — never NAVER's error text.
+    const naver = await lookupNaverSelfProduct({ url, userId: user.id });
+    if (naver.handled) {
+      if (!naver.ok) {
+        console.error(`[product-shorts] analyze-url naver code=${naver.code}`);
+        return NextResponse.json({ ok: false, code: naver.code }, { status: 200 });
+      }
+      return NextResponse.json({ ok: true, productSource: naver.productSource });
+    }
+
     const fetchResult = await secureFetchHtml(url);
     if (!fetchResult.ok) {
       // Server-side only — `detail` never leaves this function. The client

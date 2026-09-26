@@ -2,7 +2,7 @@
 // shape was chosen (matches ReelsMediaSummary/ReelsPlanInput conventions
 // already established for REELS_PLAN).
 
-export type ProductEvidenceSource = "JSON_LD" | "OPEN_GRAPH" | "META" | "USER";
+export type ProductEvidenceSource = "JSON_LD" | "OPEN_GRAPH" | "META" | "USER" | "NAVER_COMMERCE";
 
 export type ProductEvidence = {
   field: string; // e.g. "productName", "priceText", "features[0]"
