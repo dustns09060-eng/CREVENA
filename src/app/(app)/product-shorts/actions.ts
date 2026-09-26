@@ -8,6 +8,8 @@ import { deleteProductShortsMedia } from "@/lib/product-shorts/delete-photo";
 import { deleteProductShortsProject } from "@/lib/product-shorts/delete-project";
 import { updateProductShortsSource } from "@/lib/product-shorts/update-product-source";
 import type { ProductSource } from "@/lib/product-shorts/types";
+import { loadGenerationState, saveFinalSelection } from "@/lib/product-shorts/persist";
+import { sanitizeFinalSelection, type PhotoFinalSelection } from "@/lib/product-shorts/recommendation-types";
 
 const BUCKET = "product-shorts-media";
 const SIGNED_URL_TTL_SECONDS = 3600; // matches the existing collaboration-photos convention (content/page.tsx)
@@ -97,6 +99,7 @@ export type ProductShortsMediaWithUrl = {
   thumbUrl: string | null;
   originalFilename: string | null;
   displayOrder: number;
+  aiAnalyzed: boolean;
 };
 
 // Signed URLs only — this is a PRIVATE bucket, never a public URL. Same
@@ -105,7 +108,7 @@ export async function listProjectMedia(projectId: string): Promise<ProductShorts
   const supabase = await createSupabaseServerClient();
   const { data: rows } = await supabase
     .from("product_shorts_media")
-    .select("id, storage_path, thumbnail_path, original_filename, display_order")
+    .select("id, storage_path, thumbnail_path, original_filename, display_order, ai_analysis")
     .eq("project_id", projectId)
     .order("display_order", { ascending: true });
 
@@ -125,7 +128,44 @@ export async function listProjectMedia(projectId: string): Promise<ProductShorts
         thumbUrl: thumb.data?.signedUrl ?? full.data?.signedUrl ?? null,
         originalFilename: row.original_filename,
         displayOrder: row.display_order,
+        aiAnalyzed: !!row.ai_analysis,
       };
     }),
   );
+}
+
+export async function getGenerationState(projectId: string) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const result = await loadGenerationState(supabase, user.id, projectId);
+  if ("error" in result) return result;
+  return { success: true as const, state: result };
+}
+
+// §7: the AI's recommendation is never forced — the user's own final
+// selection is stored separately (this action) and is always authoritative.
+// Re-validates every id against the project's real media before saving,
+// mirroring photo-select-actions.ts's savePhotoSelection re-validation
+// pattern (without reusing collaborations.photo_select itself, per
+// instruction).
+export async function saveSelection(projectId: string, selection: PhotoFinalSelection) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const { data: mediaRows } = await supabase.from("product_shorts_media").select("id").eq("project_id", projectId);
+  const realMediaIds = new Set((mediaRows ?? []).map((m) => m.id));
+
+  const sanitized = sanitizeFinalSelection(selection, realMediaIds);
+  const result = await saveFinalSelection(supabase, user.id, projectId, sanitized);
+  if ("error" in result) return result;
+
+  revalidatePath(`/product-shorts/${projectId}`);
+  return { success: true as const };
 }

@@ -2,10 +2,12 @@ import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
-import { listProjectMedia } from "../actions";
+import { listProjectMedia, getGenerationState } from "../actions";
 import { PhotoManager } from "./PhotoManager";
+import { ShortsWorkflow } from "./ShortsWorkflow";
 import { DeleteProjectButton } from "./DeleteProjectButton";
 import type { ProductSource } from "@/lib/product-shorts/types";
+import { emptyGenerationState } from "@/lib/product-shorts/recommendation-types";
 
 export default async function ProductShortsDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,6 +26,9 @@ export default async function ProductShortsDetailPage({ params }: { params: Prom
 
   const source = project.product_source as unknown as ProductSource;
   const media = await listProjectMedia(id);
+  const stateResult = await getGenerationState(id);
+  const generationState = "state" in stateResult ? stateResult.state : emptyGenerationState();
+  const targetDurationSeconds = project.target_duration_seconds === 30 ? 30 : 15;
 
   return (
     <div>
@@ -70,6 +75,13 @@ export default async function ProductShortsDetailPage({ params }: { params: Prom
         </p>
         <PhotoManager projectId={id} initialMedia={media} />
       </Card>
+
+      <ShortsWorkflow
+        projectId={id}
+        targetDurationSeconds={targetDurationSeconds}
+        initialMedia={media}
+        initialState={generationState}
+      />
     </div>
   );
 }
