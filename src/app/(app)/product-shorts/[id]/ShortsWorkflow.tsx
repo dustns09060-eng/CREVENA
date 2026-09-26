@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { saveSelection, type ProductShortsMediaWithUrl } from "../actions";
@@ -227,6 +228,27 @@ export function ShortsWorkflow({ projectId, targetDurationSeconds, initialMedia,
               </li>
             ))}
           </ol>
+        )}
+      </Card>
+
+      <Card>
+        <h2 className="text-sm font-semibold text-zinc-900">⑦ 숏츠 편집 및 MP4</h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          {plan
+            ? "장면 순서·길이·자막을 다듬고 9:16 미리보기를 본 뒤 MP4로 만들 수 있어요. 추가 크레딧은 들지 않아요."
+            : "⑥에서 숏츠 구성을 먼저 만들면 편집할 수 있어요."}
+        </p>
+        {plan ? (
+          <Link
+            href={`/product-shorts/${projectId}/studio`}
+            className="mt-3 inline-block rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
+          >
+            편집하기
+          </Link>
+        ) : (
+          <span className="mt-3 inline-block cursor-not-allowed rounded-lg border border-zinc-200 px-3 py-1.5 text-sm text-zinc-400">
+            편집하기
+          </span>
         )}
       </Card>
     </div>

@@ -2,7 +2,6 @@
 
 import { Output, Mp4OutputFormat, BufferTarget, CanvasSource, Quality, canEncodeVideo } from "mediabunny";
 import type { ReelsScene, ReelsCaptionStyle } from "./actions";
-import type { PhotoWithUrl } from "../photos/usePhotoManager";
 import type { VideoWithUrl } from "./useVideoManager";
 
 // STEP40: browser-only MP4 rendering — see the STEP40 report for the full
@@ -16,6 +15,10 @@ import type { VideoWithUrl } from "./useVideoManager";
 export const OUTPUT_WIDTH = 1080;
 export const OUTPUT_HEIGHT = 1920;
 const RENDER_FPS = 12;
+
+// Only the full-size URL is needed to render; collaboration photos and
+// Product Shorts media both satisfy this shape.
+export type RenderablePhoto = { fullUrl: string };
 
 export type RenderProgress = {
   sceneIndex: number;
@@ -130,7 +133,7 @@ function drawCaption(ctx: CanvasRenderingContext2D, text: string, style: ReelsCa
 
 export async function renderReelsToMp4(params: {
   scenes: ReelsScene[];
-  photoById: Map<string, PhotoWithUrl>;
+  photoById: Map<string, RenderablePhoto>;
   videoById: Map<string, VideoWithUrl>;
   captionStyle: ReelsCaptionStyle;
   onProgress?: (p: RenderProgress) => void;

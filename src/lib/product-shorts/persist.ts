@@ -22,6 +22,7 @@ import {
   type PhotoRecommendationRun,
 } from "./recommendation-types";
 import type { ReelsProject } from "@/app/(app)/collaborations/[id]/reels/actions";
+import { sanitizeEditedPlan } from "./edit-plan";
 
 type Client = SupabaseClient<Database>;
 
@@ -126,4 +127,29 @@ export async function savePlan(supabase: Client, userId: string, projectId: stri
   const current = await loadGenerationState(supabase, userId, projectId);
   if ("error" in current) return current;
   return writeState(supabase, userId, projectId, { ...current, plan });
+}
+
+// Studio save (Phase 5): validates the edited ReelsProject against this
+// project's real media and the stored plan, then writes ONLY
+// reels_project.plan. Refuses when no AI plan exists yet, so the studio can
+// never be used to create a plan out of thin air. No AI, no credits.
+export async function saveEditedPlan(supabase: Client, userId: string, projectId: string, edited: unknown) {
+  const owned = await assertOwnsProject(supabase, userId, projectId);
+  if ("error" in owned) return owned;
+
+  const state = await loadGenerationState(supabase, userId, projectId);
+  if ("error" in state) return state;
+  if (!state.plan) return { error: "먼저 숏츠 구성을 만들어주세요." };
+
+  const { data: mediaRows, error } = await supabase
+    .from("product_shorts_media")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("user_id", userId);
+  if (error) return { error: "사진 정보를 확인하지 못했어요." };
+
+  const result = sanitizeEditedPlan(edited, state.plan, owned.targetDurationSeconds, new Set((mediaRows ?? []).map((m) => m.id)));
+  if (!result.ok) return { error: result.error };
+
+  return writeState(supabase, userId, projectId, { ...state, plan: result.plan });
 }
