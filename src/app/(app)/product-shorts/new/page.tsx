@@ -23,6 +23,7 @@ export default function NewProductShortsPage() {
   const [urlInput, setUrlInput] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [autoImportFailed, setAutoImportFailed] = useState(false);
+  const [naverFailed, setNaverFailed] = useState(false);
   const [source, setSource] = useState<ProductSource>(() => buildManualProductSource({ productName: "" }));
   const [featuresText, setFeaturesText] = useState("");
   // 15초가 기본값입니다: 판매 숏츠는 후킹-상품-혜택-CTA를 빠르게 보여주는
@@ -49,6 +50,7 @@ export default function NewProductShortsPage() {
     }
     setStage("analyzing");
     setAutoImportFailed(false);
+    setNaverFailed(false);
 
     try {
       const res = await fetch("/api/product-shorts/analyze-url", {
@@ -69,6 +71,7 @@ export default function NewProductShortsPage() {
       // failure/etc.) -> same generic message, same fallback: continue with
       // an empty manual-entry form, never a dead end.
       setAutoImportFailed(true);
+      setNaverFailed(typeof data?.code === "string" && data.code.startsWith("NAVER_"));
       setSource(buildManualProductSource({ productName: "", sourceUrl: urlInput }));
       setFeaturesText("");
       setStage("form");
@@ -81,6 +84,7 @@ export default function NewProductShortsPage() {
 
   function startManualEntry() {
     setAutoImportFailed(false);
+    setNaverFailed(false);
     setSource(buildManualProductSource({ productName: "" }));
     setFeaturesText("");
     setStage("form");
@@ -153,7 +157,14 @@ export default function NewProductShortsPage() {
         <Card className="mt-6">
           {autoImportFailed && (
             <p className="mb-4 rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-800">
-              상품 정보를 자동으로 불러오지 못했어요. 직접 입력해서 계속할 수 있어요.
+              {naverFailed ? "네이버 상품 정보를 자동으로 불러오지 못했어요." : "상품 정보를 자동으로 불러오지 못했어요."} 직접 입력해서 계속할 수 있어요.
+            </p>
+          )}
+          {source.evidence.some((e) => e.source === "NAVER_COMMERCE") && (
+            <p className="mb-4 rounded-lg bg-zinc-50 px-3 py-3 text-xs text-zinc-600">
+              네이버 스토어에서 상품 정보를 불러왔어요. 내용은 자유롭게 수정할 수 있어요.
+              <br />
+              상품 사진 자동 불러오기는 준비 중이에요. 현재는 사용할 사진을 직접 올려주세요.
             </p>
           )}
 
