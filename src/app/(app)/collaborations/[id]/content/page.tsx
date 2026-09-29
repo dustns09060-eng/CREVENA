@@ -28,59 +28,51 @@ export default async function CollaborationContentPage({
   const { id } = await params;
 
   const supabase = await createSupabaseServerClient();
-  const { data: collaboration } = await supabase
-    .from("collaborations")
-    .select(
-      "brand_name, product_name, campaign_name, required_keywords, required_hashtags, required_mentions, ad_disclosure_text, content_guide, required_photo_count, review_notes",
-    )
-    .eq("id", id)
-    .maybeSingle();
+
+  // These 7 reads share no result-dependency on each other — every WHERE
+  // clause here only needs the route's `id`, never another query's output —
+  // so they run concurrently instead of one-at-a-time. photoSelectRow stays
+  // its OWN separate query (not merged into the collaboration select below):
+  // migration 0026 (collaborations.photo_select) may not be applied yet, and
+  // that must degrade this one feature to session-only, never take down the
+  // rest of the page — see the STEP47 comment this preserves.
+  const [
+    { data: collaboration },
+    { data: photoSelectRow, error: photoSelectError },
+    { data: guide },
+    { data: styles },
+    { data: existingContents },
+    { data: photos },
+    { data: videos },
+  ] = await Promise.all([
+    supabase
+      .from("collaborations")
+      .select(
+        "brand_name, product_name, campaign_name, required_keywords, required_hashtags, required_mentions, ad_disclosure_text, content_guide, required_photo_count, review_notes",
+      )
+      .eq("id", id)
+      .maybeSingle(),
+    supabase.from("collaborations").select("photo_select").eq("id", id).maybeSingle(),
+    supabase.from("collaboration_guides").select("raw_content").eq("collaboration_id", id).maybeSingle(),
+    supabase.from("creator_styles").select("style_name, sample_text").order("created_at", { ascending: false }).limit(5),
+    supabase
+      .from("contents")
+      .select("id, platform, body, status, generation_input")
+      .eq("collaboration_id", id)
+      .in("platform", [...STUDIO_PLATFORMS, BLOG_PLATFORM, REELS_PLATFORM, CAROUSEL_PLATFORM, NAVER_CLIP_PLATFORM])
+      .order("created_at", { ascending: false }),
+    supabase.from("collaboration_photos").select("*").eq("collaboration_id", id).order("display_order", { ascending: true }),
+    supabase.from("collaboration_videos").select("*").eq("collaboration_id", id).order("display_order", { ascending: true }),
+  ]);
 
   if (!collaboration) {
     notFound();
   }
-
-  // STEP47: read the saved AI Photo Select state in its OWN query, never
-  // joined into the collaboration select above. Migration 0026 (which adds
-  // collaborations.photo_select) is not applied to production by STEP47, so
-  // this query can legitimately fail with "column does not exist" — and a
-  // failure here must degrade the feature to session-only, never break
-  // Content Studio. Sanitized against the real photo id set further below.
-  const { data: photoSelectRow, error: photoSelectError } = await supabase
-    .from("collaborations")
-    .select("photo_select")
-    .eq("id", id)
-    .maybeSingle();
   if (photoSelectError) {
     console.warn(
       `collaborations.photo_select unavailable (STEP47 migration 0026 likely not applied): ${photoSelectError.message}`,
     );
   }
-
-  const { data: guide } = await supabase
-    .from("collaboration_guides")
-    .select("raw_content")
-    .eq("collaboration_id", id)
-    .maybeSingle();
-
-  const { data: styles } = await supabase
-    .from("creator_styles")
-    .select("style_name, sample_text")
-    .order("created_at", { ascending: false })
-    .limit(5);
-
-  const { data: existingContents } = await supabase
-    .from("contents")
-    .select("id, platform, body, status, generation_input")
-    .eq("collaboration_id", id)
-    .in("platform", [
-      ...STUDIO_PLATFORMS,
-      BLOG_PLATFORM,
-      REELS_PLATFORM,
-      CAROUSEL_PLATFORM,
-      NAVER_CLIP_PLATFORM,
-    ])
-    .order("created_at", { ascending: false });
 
   const initialContents: Partial<
     Record<ContentPlatformKey, { id: string; body: string; status: ContentStatus; generationInput: PlatformParts | null }>
@@ -122,12 +114,6 @@ export default async function CollaborationContentPage({
     ? { id: latestCarousel.id, generationInput: (latestCarousel.generation_input as CarouselProject | null) ?? null }
     : undefined;
 
-  const { data: photos } = await supabase
-    .from("collaboration_photos")
-    .select("*")
-    .eq("collaboration_id", id)
-    .order("display_order", { ascending: true });
-
   const photoList = photos ?? [];
   // STEP43.5: this is the ONLY place fullUrl/thumbUrl are produced for a
   // photo — every consumer (Blog Studio, Naver Publish Assistant, Carousel
@@ -138,27 +124,35 @@ export default async function CollaborationContentPage({
   // back to the original so the app never shows a broken image — but still
   // log it, since a silent fallback shouldn't hide a real edited/original
   // mismatch forever.
-  const signedUrls = await Promise.all(
-    photoList.map(async (p) => {
-      const effectiveFullPath = p.edited_storage_path ?? p.storage_path;
-      const effectiveThumbPath = p.edited_thumbnail_path ?? p.thumbnail_path;
-      let [full, thumb] = await Promise.all([
-        supabase.storage.from(BUCKET).createSignedUrl(effectiveFullPath, 3600),
-        supabase.storage.from(BUCKET).createSignedUrl(effectiveThumbPath, 3600),
-      ]);
-      if (p.edited_storage_path && (full.error || !full.data)) {
-        console.error(`photo ${p.id}: edited_storage_path signed URL failed, falling back to original`, full.error);
-        full = await supabase.storage.from(BUCKET).createSignedUrl(p.storage_path, 3600);
-      }
-      if (p.edited_thumbnail_path && (thumb.error || !thumb.data)) {
-        console.error(`photo ${p.id}: edited_thumbnail_path signed URL failed, falling back to original`, thumb.error);
-        thumb = await supabase.storage.from(BUCKET).createSignedUrl(p.thumbnail_path, 3600);
-      }
-      return { fullUrl: full.data?.signedUrl ?? "", thumbUrl: thumb.data?.signedUrl ?? "" };
-    }),
-  );
+  const videoList = videos ?? [];
+
+  // Photo and video signing are independent of each other (each only needs
+  // its own already-fetched row list above), so they run concurrently too.
+  const [signedUrls, videoSignedUrls] = await Promise.all([
+    Promise.all(
+      photoList.map(async (p) => {
+        const effectiveFullPath = p.edited_storage_path ?? p.storage_path;
+        const effectiveThumbPath = p.edited_thumbnail_path ?? p.thumbnail_path;
+        let [full, thumb] = await Promise.all([
+          supabase.storage.from(BUCKET).createSignedUrl(effectiveFullPath, 3600),
+          supabase.storage.from(BUCKET).createSignedUrl(effectiveThumbPath, 3600),
+        ]);
+        if (p.edited_storage_path && (full.error || !full.data)) {
+          console.error(`photo ${p.id}: edited_storage_path signed URL failed, falling back to original`, full.error);
+          full = await supabase.storage.from(BUCKET).createSignedUrl(p.storage_path, 3600);
+        }
+        if (p.edited_thumbnail_path && (thumb.error || !thumb.data)) {
+          console.error(`photo ${p.id}: edited_thumbnail_path signed URL failed, falling back to original`, thumb.error);
+          thumb = await supabase.storage.from(BUCKET).createSignedUrl(p.thumbnail_path, 3600);
+        }
+        return { fullUrl: full.data?.signedUrl ?? "", thumbUrl: thumb.data?.signedUrl ?? "" };
+      }),
+    ),
+    Promise.all(videoList.map((v) => supabase.storage.from(VIDEO_BUCKET).createSignedUrl(v.storage_path, 3600))),
+  ]);
 
   const photosWithUrls = photoList.map((p, i) => ({ ...p, ...signedUrls[i] }));
+  const videosWithUrls = videoList.map((v, i) => ({ ...v, url: videoSignedUrls[i].data?.signedUrl ?? "" }));
 
   // Every stored photo id is re-validated against the photos that actually
   // exist right now, so an id left behind by a deleted photo (or a stale
@@ -166,18 +160,6 @@ export default async function CollaborationContentPage({
   const initialPhotoSelection = photoSelectRow?.photo_select
     ? sanitizePhotoSelection(photoSelectRow.photo_select, photoList.map((p) => p.id))
     : null;
-
-  const { data: videos } = await supabase
-    .from("collaboration_videos")
-    .select("*")
-    .eq("collaboration_id", id)
-    .order("display_order", { ascending: true });
-
-  const videoList = videos ?? [];
-  const videoSignedUrls = await Promise.all(
-    videoList.map((v) => supabase.storage.from(VIDEO_BUCKET).createSignedUrl(v.storage_path, 3600)),
-  );
-  const videosWithUrls = videoList.map((v, i) => ({ ...v, url: videoSignedUrls[i].data?.signedUrl ?? "" }));
 
   const styleSamples = (styles ?? []).map((s) => ({
     styleName: s.style_name,

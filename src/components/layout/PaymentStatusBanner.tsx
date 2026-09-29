@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCachedAuthUser, getCachedUserStatus } from "@/lib/user-context";
 import { paymentNoticeFor } from "@/lib/billing/payment-notice";
 
 // Read-only, like UsageBadge: shows a notice when the member's recurring
@@ -9,18 +9,11 @@ import { paymentNoticeFor } from "@/lib/billing/payment-notice";
 // Nothing renders for everyone else, and any error just renders nothing — a
 // broken banner must never break the page.
 export async function PaymentStatusBanner() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCachedAuthUser();
   if (!user) return null;
 
-  const { data: profile, error } = await supabase
-    .from("users")
-    .select("subscription_status, next_retry_at")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (error || !profile) return null;
+  const profile = await getCachedUserStatus(user.id);
+  if (!profile) return null;
 
   const notice = paymentNoticeFor(profile.subscription_status, profile.next_retry_at);
   if (!notice) return null;
