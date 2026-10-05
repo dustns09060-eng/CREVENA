@@ -9,12 +9,23 @@ import { deleteProductShortsProject } from "@/lib/product-shorts/delete-project"
 import { updateProductShortsSource } from "@/lib/product-shorts/update-product-source";
 import type { ProductSource } from "@/lib/product-shorts/types";
 import { loadGenerationState, saveFinalSelection, saveEditedPlan, assertOwnsProject } from "@/lib/product-shorts/persist";
-import { sanitizeFinalSelection, type PhotoFinalSelection } from "@/lib/product-shorts/recommendation-types";
+import {
+  sanitizeFinalSelection,
+  type PhotoFinalSelection,
+  type ProductShortsGenerationState,
+} from "@/lib/product-shorts/recommendation-types";
 
 const BUCKET = "product-shorts-media";
 const SIGNED_URL_TTL_SECONDS = 3600; // matches the existing collaboration-photos convention (content/page.tsx)
 
-export async function createProject(input: { targetDurationSeconds: 15 | 30; productSource: ProductSource }) {
+// Return types are spelled out (not inferred) on the actions below: with an inferred
+// `{ error } | { success, ... }` union, TypeScript may normalize the members into optional
+// `?: undefined` properties depending on check order, which defeats `"error" in result`
+// narrowing at the call sites and breaks `next build` on a clean machine.
+export async function createProject(input: {
+  targetDurationSeconds: 15 | 30;
+  productSource: ProductSource;
+}): Promise<{ error: string } | { success: true; id: string }> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -28,7 +39,10 @@ export async function createProject(input: { targetDurationSeconds: 15 | 30; pro
   return { success: true as const, id: result.id };
 }
 
-export async function uploadPhoto(projectId: string, formData: FormData) {
+export async function uploadPhoto(
+  projectId: string,
+  formData: FormData,
+): Promise<{ error: string } | { success: true; id: string }> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -149,7 +163,9 @@ export async function listProjectMedia(projectId: string): Promise<ProductShorts
   });
 }
 
-export async function getGenerationState(projectId: string) {
+export async function getGenerationState(
+  projectId: string,
+): Promise<{ error: string } | { success: true; state: ProductShortsGenerationState }> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
