@@ -4,32 +4,27 @@ import { getAIProvider } from "@/lib/ai";
 import { logAiUsage, classifyErrorType, GENERIC_AI_FAILURE_MESSAGE } from "@/lib/ai/usage";
 import { checkAndConsumeAiCredits, refundAiCredits } from "@/lib/ai/usage-limits";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
-import { buildProductShortsRecommendPrompt, type ProductShortsAliasedPhoto } from "@/lib/ai/product-shorts-prompts";
-import { buildPhotoAliasMap, invertAliasMap } from "@/lib/product-shorts/photo-alias";
-import { validateRecommendationResponse } from "@/lib/product-shorts/recommendation-validation";
-import { assertOwnsProject, assertOwnsVersion, saveRecommendation } from "@/lib/product-shorts/persist";
-import { loadVersionContext } from "@/lib/product-shorts/versions";
-import type { VersionAngle } from "@/lib/product-shorts/angle-types";
+import { buildProductShortsAngleHookPrompt } from "@/lib/ai/product-shorts-prompts";
+import { validateAnglesResponse, validateHooks } from "@/lib/product-shorts/angle-validation";
+import { sourceTextOf } from "@/lib/product-shorts/claim-guard";
+import { assertOwnsProject, loadAngleSuggestions, saveAngleSuggestions } from "@/lib/product-shorts/persist";
+import type { AngleSuggestionSet } from "@/lib/product-shorts/angle-types";
 import type { ProductSource } from "@/lib/product-shorts/types";
 
-// Dedicated route (rather than reusing the generic /api/ai/suggest-order
-// as-is). Reason: this call's failure mode includes "AI returned a
-// hallucinated/unknown photo alias", which only THIS route can detect (the
-// generic route has no idea what an alias is). That check must live inside
-// the same try/catch that already does refundAiCredits on any thrown error
-// — reusing suggest-order unmodified would consume the credit successfully
-// from its point of view and leave no way to trigger the required refund
-// for an invalid-alias response (§5/§18). Still charges the existing
-// ORDER_SUGGEST operation at its existing 2-credit price — no new
-// AiOperation, no price change, and suggest-order/route.ts itself is
-// untouched.
-const OPERATION = "ORDER_SUGGEST" as const;
-const CREDITS_NEEDED = OPERATION_CREDIT_COST.ORDER_SUGGEST;
-const MAX_TOKENS = 4096;
+// Sales angles + hook candidates (ANGLE_HOOK_SUGGEST, 3 credits per call).
+//   mode "angles": 2~5 angles, 10 hooks each, in ONE call (structured JSON).
+//   mode "hooks" : regenerate the 10 hooks of ONE existing angle (same price).
+// The model's output is validated on the server (counts, styles, lengths,
+// unsupported-claim backstop); anything that fails validation is refunded and
+// nothing is saved. Product photos are NOT re-analyzed: this only reads the
+// ai_analysis text that PHOTO_ANALYSIS already stored.
+const OPERATION = "ANGLE_HOOK_SUGGEST" as const;
+const CREDITS_NEEDED = OPERATION_CREDIT_COST.ANGLE_HOOK_SUGGEST;
+const MAX_TOKENS = 6144;
 const STOP_REASON_MAX_TOKENS = "max_tokens";
 const TRUNCATED_ERROR_TYPE = "OUTPUT_TRUNCATED";
 const TRUNCATED_USER_MESSAGE =
-  "사진이 많아 AI 추천 결과를 완성하지 못했어요.\n사용한 크레딧은 자동으로 복구되었습니다.\n다시 시도해 주세요.";
+  "AI 결과를 끝까지 완성하지 못했어요.\n사용한 크레딧은 자동으로 복구되었습니다.\n다시 시도해 주세요.";
 
 class OutputTruncatedError extends Error {
   constructor(
@@ -51,22 +46,15 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
   const projectId = body?.projectId;
+  const mode = body?.mode === "hooks" ? "hooks" : "angles";
+  const angleId = body?.angleId;
   if (typeof projectId !== "string") return NextResponse.json({ error: "projectId는 필수입니다." }, { status: 400 });
+  if (mode === "hooks" && typeof angleId !== "string") {
+    return NextResponse.json({ error: "angleId는 필수입니다." }, { status: 400 });
+  }
 
   const project = await assertOwnsProject(supabase, user.id, projectId);
   if ("error" in project) return NextResponse.json({ error: project.error }, { status: 403 });
-
-  // Shopping Shorts: an optional versionId targets one A/B/C version; without it the
-  // route works on the project's single V1 state exactly as before.
-  const versionId = typeof body?.versionId === "string" ? body.versionId : null;
-  let versionContext: { angle: VersionAngle; hook: string } | null = null;
-  if (versionId) {
-    const ownedVersion = await assertOwnsVersion(supabase, user.id, projectId, versionId);
-    if ("error" in ownedVersion) return NextResponse.json({ error: ownedVersion.error }, { status: 403 });
-    const loaded = await loadVersionContext(supabase, user.id, projectId, versionId);
-    if ("error" in loaded) return NextResponse.json({ error: loaded.error }, { status: 404 });
-    versionContext = loaded;
-  }
 
   const { data: projectRow } = await supabase
     .from("product_shorts_projects")
@@ -78,28 +66,38 @@ export async function POST(request: Request) {
 
   const { data: mediaRows, error: mediaError } = await supabase
     .from("product_shorts_media")
-    .select("id, ai_analysis, display_order")
+    .select("ai_analysis, display_order")
     .eq("project_id", projectId)
     .order("display_order", { ascending: true });
   if (mediaError || !mediaRows) return NextResponse.json({ error: "사진을 불러오지 못했습니다." }, { status: 500 });
-
-  const analyzedMedia = mediaRows.filter((m) => !!m.ai_analysis);
-  if (analyzedMedia.length === 0) {
+  const photoDescriptions = mediaRows.map((m) => m.ai_analysis).filter((d): d is string => !!d);
+  if (photoDescriptions.length === 0) {
     return NextResponse.json({ error: "먼저 사진 AI 분석을 완료해주세요." }, { status: 400 });
   }
 
-  const aliasMap = buildPhotoAliasMap(analyzedMedia.map((m) => m.id));
-  const aliasToUuid = invertAliasMap(aliasMap);
-  const aliasedPhotos: ProductShortsAliasedPhoto[] = analyzedMedia.map((m) => ({
-    alias: aliasMap.get(m.id)!,
-    description: m.ai_analysis!,
-  }));
+  let existing: AngleSuggestionSet | null = null;
+  let targetAngleIndex = -1;
+  if (mode === "hooks") {
+    const loaded = await loadAngleSuggestions(supabase, user.id, projectId);
+    if (loaded && "error" in loaded) return NextResponse.json({ error: loaded.error }, { status: 500 });
+    existing = loaded;
+    targetAngleIndex = existing ? existing.angles.findIndex((a) => a.id === angleId) : -1;
+    if (!existing || targetAngleIndex < 0) {
+      return NextResponse.json({ error: "판매각도를 찾을 수 없습니다." }, { status: 404 });
+    }
+  }
 
-  const { systemPrompt, prompt, responseSchema } = buildProductShortsRecommendPrompt({
+  const { systemPrompt, prompt, responseSchema } = buildProductShortsAngleHookPrompt({
     productSource,
-    photos: aliasedPhotos,
-    angle: versionContext?.angle ?? null,
-    hook: versionContext?.hook ?? null,
+    photoDescriptions,
+    onlyAngle:
+      mode === "hooks" && existing
+        ? {
+            type: existing.angles[targetAngleIndex].type,
+            title: existing.angles[targetAngleIndex].title,
+            rationale: existing.angles[targetAngleIndex].rationale,
+          }
+        : null,
   });
 
   const { data: profile } = await supabase.from("users").select("plan_tier").eq("id", user.id).maybeSingle();
@@ -142,14 +140,23 @@ export async function POST(request: Request) {
       throw new Error(`AI 응답 JSON 파싱 실패: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
     }
 
-    const validated = validateRecommendationResponse(
-      parsed,
-      aliasToUuid,
-      analyzedMedia.map((m) => m.id),
-    );
-    if (!validated.ok) throw new Error(validated.error);
+    const sourceText = sourceTextOf(productSource);
+    let result: AngleSuggestionSet;
+    if (mode === "hooks" && existing) {
+      const validated = validateHooks((parsed as { hooks?: unknown } | null)?.hooks, sourceText);
+      if (!validated.ok) throw new Error(validated.error);
+      // Only this angle's hooks change; every other angle is carried over untouched.
+      result = {
+        generatedAt: existing.generatedAt,
+        angles: existing.angles.map((a, i) => (i === targetAngleIndex ? { ...a, hooks: validated.hooks } : a)),
+      };
+    } else {
+      const validated = validateAnglesResponse(parsed, sourceText, !!productSource.priceText);
+      if (!validated.ok) throw new Error(validated.error);
+      result = { generatedAt: new Date().toISOString(), angles: validated.angles };
+    }
 
-    const saveResult = await saveRecommendation(supabase, user.id, projectId, validated.run, versionId);
+    const saveResult = await saveAngleSuggestions(supabase, user.id, projectId, result);
     if ("error" in saveResult) throw new Error(saveResult.error);
 
     await logAiUsage(supabase, {
@@ -165,18 +172,12 @@ export async function POST(request: Request) {
       creditsUsed: CREDITS_NEEDED,
     });
 
-    return NextResponse.json({ recommendation: validated.run });
+    return NextResponse.json({ suggestions: result });
   } catch (error) {
     await refundAiCredits(supabase, usageCheck.reservationId);
     const truncated = error instanceof OutputTruncatedError;
     const errorType = truncated ? TRUNCATED_ERROR_TYPE : classifyErrorType(error);
-    if (truncated) {
-      console.error(
-        `[/api/product-shorts/recommend] 실패 (${errorType}): inputTokens=${error.inputTokens} outputTokens=${error.outputTokens} maxTokens=${error.maxTokens}`,
-      );
-    } else {
-      console.error(`[/api/product-shorts/recommend] 실패 (${errorType}):`, error);
-    }
+    console.error(`[/api/product-shorts/angles] 실패 (${errorType}):`, error);
     await logAiUsage(supabase, {
       userId: user.id,
       collaborationId: null,

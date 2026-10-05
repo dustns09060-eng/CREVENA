@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import type { ProductSource } from "@/lib/product-shorts/types";
+import { Badge } from "@/components/ui/Badge";
+import { platformLabel } from "@/lib/product-shorts/detect-platform";
 
 // Independent from collaborations by design (see the Product Shorts PR
 // report — sellers without a sponsorship collaboration are the primary
@@ -40,7 +42,10 @@ export default async function ProductShortsPage() {
                     href={`/product-shorts/${p.id}`}
                     className="flex items-center justify-between px-4 py-3 text-sm hover:bg-zinc-50"
                   >
-                    <span className="text-zinc-900">{source?.productName || "(이름 없음)"}</span>
+                    <span className="flex items-center gap-2 text-zinc-900">
+                      {source?.productName || "(이름 없음)"}
+                      <Badge tone="info">{platformLabel(source?.platform)}</Badge>
+                    </span>
                     <span className="text-zinc-500">{p.target_duration_seconds}초</span>
                   </Link>
                 </li>

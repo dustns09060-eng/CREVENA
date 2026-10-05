@@ -10,7 +10,8 @@ import net from "node:net";
 // like 169.254.169.254 live), CGNAT, multicast, reserved/unspecified, and
 // their IPv6 equivalents, plus IPv4-mapped IPv6 (unwrapped and re-checked
 // against the IPv4 rules — an attacker cannot bypass the IPv4 blocklist by
-// writing the same address as `::ffff:127.0.0.1`).
+// writing the same address as `::ffff:127.0.0.1`). The same applies to the
+// other IPv6 transition forms (IPv4-compatible, NAT64, 6to4, Teredo).
 
 function ipv4ToInt(ip: string): number | null {
   const parts = ip.split(".");
@@ -90,13 +91,28 @@ function isBlockedIpv6(ip: string): boolean {
 
   // IPv4-mapped (::ffff:0:0/96): first 5 hextets 0000, 6th ffff — unwrap
   // and re-check the embedded IPv4 address against the IPv4 blocklist.
-  const isV4Mapped = hextets.slice(0, 4).every((h) => h === "0000") && hextets[4] === "0000" && hextets[5] === "ffff";
-  if (isV4Mapped) {
+  const embeddedIpv4 = () => {
     const hi = parseInt(hextets[6], 16);
     const lo = parseInt(hextets[7], 16);
-    const embedded = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
-    return isBlockedIpv4(embedded);
+    return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+  };
+  const leadingZeros = (n: number) => hextets.slice(0, n).every((h) => h === "0000");
+  const isV4Mapped = leadingZeros(5) && hextets[5] === "ffff";
+  if (isV4Mapped) return isBlockedIpv4(embeddedIpv4());
+
+  // Other IPv6 forms that carry (or hide) an IPv4 address. Each one is a way to
+  // reach an internal IPv4 host through an address that looks "public" as IPv6.
+  // IPv4-compatible ::a.b.c.d (deprecated; also covers ::, ::1 as 0.0.0.x) — unwrap and re-check.
+  if (leadingZeros(6)) return isBlockedIpv4(embeddedIpv4());
+  // NAT64 well-known prefix 64:ff9b::/96 — unwrap and re-check the embedded IPv4.
+  if (hextets[0] === "0064" && hextets[1] === "ff9b" && hextets.slice(2, 6).every((h) => h === "0000")) {
+    return isBlockedIpv4(embeddedIpv4());
   }
+  if (hextets[0] === "0064" && hextets[1] === "ff9b" && hextets[2] === "0001") return true; // 64:ff9b:1::/48 local-use NAT64
+  if (hextets[0] === "2002") return true; // 6to4 (2002::/16): embeds an arbitrary IPv4 — blocked as a whole range
+  if (hextets[0] === "2001" && hextets[1] === "0000") return true; // Teredo (2001::/32): IPv4 is obfuscated, cannot be checked
+  if (hextets[0] === "2001" && hextets[1] === "0db8") return true; // documentation (2001:db8::/32)
+  if (hextets[0] === "0100" && hextets.slice(1, 4).every((h) => h === "0000")) return true; // discard-only (100::/64)
 
   const full = hextets.join("");
   if (/^0+$/.test(full)) return true; // ::  (unspecified)

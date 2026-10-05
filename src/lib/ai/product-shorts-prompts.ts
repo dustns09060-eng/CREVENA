@@ -15,6 +15,18 @@ import { NO_FABRICATION_RULE } from "./photo-blog-prompts";
 import type { ProductSource } from "@/lib/product-shorts/types";
 import { PRODUCT_SHORTS_PHOTO_ROLES } from "@/lib/product-shorts/recommendation-types";
 import type { ResponseSchema } from "./types";
+import {
+  HOOK_MAX_CHARS,
+  HOOK_MIN_CHARS,
+  HOOK_STYLES,
+  HOOKS_PER_ANGLE,
+  MAX_ANGLES,
+  MIN_ANGLES,
+  RECOMMENDED_ANGLE_COUNT,
+  RECOMMENDED_HOOK_COUNT,
+  SALES_ANGLE_TYPES,
+  type VersionAngle,
+} from "@/lib/product-shorts/angle-types";
 
 // Section 10's evidence-gated claim list, reused by both the recommendation
 // prompt (reasons must not invent selling points) and the plan prompt
@@ -40,6 +52,9 @@ export type ProductShortsRecommendInput = {
   productSource: ProductSource;
   reviewNotes?: string | null; // free-text real user experience, if any
   photos: ProductShortsAliasedPhoto[];
+  // Shopping Shorts versions: the sales angle / hook this recommendation is for.
+  angle?: VersionAngle | null;
+  hook?: string | null;
 };
 
 export const productShortsRecommendSchema: ResponseSchema = {
@@ -109,6 +124,7 @@ export function buildProductShortsRecommendPrompt(input: ProductShortsRecommendI
     "## 사진 목록 (이 id들만 사용 가능)",
     photoLines || "(없음)",
     "",
+    ...versionContextLines(input.angle, input.hook, "사진은 이 판매각도를 보여주기에 좋은 컷을 우선해서 골라라. 사진 설명에 없는 내용을 각도에 끼워 맞추지 마라."),
     "위 정보를 바탕으로 판매 숏츠에 쓸 사진을 추천해줘.",
   ];
 
@@ -126,6 +142,9 @@ export type ProductShortsPlanInput = {
   // Final user-selected photos only, in the user's chosen order — the AI
   // must build scenes from exactly this set, nothing else.
   selectedPhotos: ProductShortsAliasedPhoto[];
+  // Shopping Shorts versions: the angle and the hook the user picked.
+  angle?: VersionAngle | null;
+  hook?: string | null;
 };
 
 export const productShortsPlanSchema: ResponseSchema = {
@@ -208,8 +227,147 @@ export function buildProductShortsPlanPrompt(input: ProductShortsPlanInput) {
     `## 선택된 사진 목록 (사용자가 최종 선택한 순서, 목표 길이 ${input.targetDurationSeconds}초)`,
     photoLines || "(없음)",
     "",
+    ...versionContextLines(
+      input.angle,
+      input.hook,
+      "장면 구성과 자막은 이 판매각도를 따르되, 상품 정보에 없는 사실은 넣지 마라. 첫 장면 자막(hook 필드)은 위 후킹 문구를 그대로 써라.",
+    ),
     "위 정보를 바탕으로 판매 숏츠 장면 구성을 만들어줘.",
   ];
 
   return { systemPrompt, prompt: promptParts.join("\n"), responseSchema: productShortsPlanSchema };
+}
+
+
+// ---------------------------------------------------------------------------
+// Shopping Shorts versions: shared "this version's angle + hook" prompt section.
+// ---------------------------------------------------------------------------
+
+function versionContextLines(angle: VersionAngle | null | undefined, hook: string | null | undefined, instruction: string): string[] {
+  if (!angle && !hook) return [];
+  const lines = ["## 이 버전의 판매각도와 후킹"];
+  if (angle) lines.push(`판매각도: ${angle.title} (${angle.type}) — ${angle.rationale}`);
+  if (hook) lines.push(`사용자가 고른 후킹: ${hook}`);
+  lines.push(instruction, "");
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
+// 3. 판매각도 + 후킹 (ANGLE_HOOK_SUGGEST, 3 크레딧)
+// ---------------------------------------------------------------------------
+
+const hookItemSchema = {
+  type: "object",
+  properties: {
+    text: { type: "string", description: `후킹 문구. ${HOOK_MIN_CHARS}~${HOOK_MAX_CHARS}자, 한 줄.` },
+    style: { type: "string", enum: [...HOOK_STYLES] },
+    recommended: { type: "boolean", description: `추천 후킹이면 true. 각도마다 정확히 ${RECOMMENDED_HOOK_COUNT}개.` },
+  },
+  required: ["text", "style", "recommended"],
+};
+
+export const productShortsAnglesSchema: ResponseSchema = {
+  name: "submit_product_shorts_angles",
+  description: "상품의 판매각도와 각 각도별 후킹 후보를 제출한다.",
+  schema: {
+    type: "object",
+    properties: {
+      angles: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            type: { type: "string", enum: [...SALES_ANGLE_TYPES] },
+            title: { type: "string", description: "각도 이름. 30자 이내." },
+            rationale: { type: "string", description: "이 상품에 이 각도가 맞는 이유. 상품 정보에 있는 사실에만 근거. 120자 이내." },
+            recommended: { type: "boolean", description: `추천 각도면 true. 전체에서 정확히 ${RECOMMENDED_ANGLE_COUNT}개(각도가 ${RECOMMENDED_ANGLE_COUNT}개 미만이면 전부).` },
+            hooks: { type: "array", items: hookItemSchema, description: `정확히 ${HOOKS_PER_ANGLE}개` },
+          },
+          required: ["type", "title", "rationale", "recommended", "hooks"],
+        },
+      },
+    },
+    required: ["angles"],
+  },
+};
+
+export const productShortsHooksSchema: ResponseSchema = {
+  name: "submit_product_shorts_hooks",
+  description: "선택한 판매각도의 후킹 후보를 제출한다.",
+  schema: {
+    type: "object",
+    properties: { hooks: { type: "array", items: hookItemSchema, description: `정확히 ${HOOKS_PER_ANGLE}개` } },
+    required: ["hooks"],
+  },
+};
+
+const HOOK_QUALITY_RULES = [
+  `## 후킹 규칙 (각도마다 정확히 ${HOOKS_PER_ANGLE}개)`,
+  `- 한 줄, ${HOOK_MIN_CHARS}~${HOOK_MAX_CHARS}자. 서로 비슷한 문장을 반복하지 말고 최소 4가지 이상의 유형(style)을 섞어라.`,
+  "- 유형: PROBLEM(문제제기) / EMPATHY(공감) / QUESTION(질문) / TARGET(타깃) / FEATURE(특징) / USE_SCENE(사용상황) / CONCLUSION(결론).",
+  `- 추천(recommended)은 정확히 ${RECOMMENDED_HOOK_COUNT}개. 상품 정보에 근거가 가장 분명하고 과장 없이 눈길을 끄는 것을 골라라.`,
+  "- 금지: 근거 없는 1위·최저가·품절대란·판매폭발·후기 수·만족도·오늘만·한정수량, 낚시성 문구, 공포 마케팅, 상품 정보에 없는 숫자.",
+  "- 사용 경험을 지어내지 마라('써봤더니' 등은 사용자가 입력한 경험이 있을 때만).",
+].join("\n");
+
+export type ProductShortsAngleHookInput = {
+  productSource: ProductSource;
+  // ai_analysis text of the project's analyzed photos (already computed; reused, never re-run)
+  photoDescriptions: string[];
+  // When set, only the hooks for this one angle are generated.
+  onlyAngle?: VersionAngle | null;
+};
+
+export function buildProductShortsAngleHookPrompt(input: ProductShortsAngleHookInput) {
+  const only = input.onlyAngle ?? null;
+  const systemPrompt = [
+    only
+      ? "너는 상품 판매 숏츠(짧은 세로 영상)의 후킹 문구를 만드는 어시스턴트다. 주어진 판매각도 하나에 대해서만 후킹을 만든다."
+      : "너는 상품 판매 숏츠(짧은 세로 영상)의 판매각도와 후킹 문구를 기획하는 어시스턴트다.",
+    NO_FABRICATION_RULE,
+    PRODUCT_FACTS_ONLY_RULE,
+    "",
+    ...(only
+      ? []
+      : [
+          "## 판매각도 규칙",
+          `- ${MIN_ANGLES}~${MAX_ANGLES}개. 이 상품에 실제로 맞는 각도만 만들고, ${MAX_ANGLES}개를 채우려고 억지로 만들지 마라. 같은 유형을 두 번 쓰지 마라.`,
+          "- 유형: PROBLEM_SOLVING(문제 해결형) / VALUE(가성비형) / FEATURE(특징형) / TARGET(타깃형) / USE_SCENE(사용상황형) / COMPARE(비교/선택형).",
+          "- VALUE(가성비형)는 아래 '상품 정보'에 가격이 있을 때만 쓸 수 있다. 가격 근거가 없으면 만들지 마라.",
+          "- COMPARE(비교/선택형)는 다른 상품명이나 수치를 지어내지 말고, '고를 때 보는 기준'처럼 상품 정보에서 말할 수 있는 선택 기준만 다뤄라.",
+          `- 추천(recommended)은 정확히 ${RECOMMENDED_ANGLE_COUNT}개(각도가 ${RECOMMENDED_ANGLE_COUNT}개 미만이면 전부).`,
+          "",
+        ]),
+    HOOK_QUALITY_RULES,
+    "",
+    `결과는 ${only ? productShortsHooksSchema.name : productShortsAnglesSchema.name} 도구를 호출해서 제출하라.`,
+  ].join("\n");
+
+  const p = input.productSource;
+  const sourceLines = [`상품명: ${p.productName}`];
+  if (p.priceText) sourceLines.push(`가격 텍스트: ${p.priceText}`);
+  if (p.description) sourceLines.push(`설명: ${p.description}`);
+  if (p.features.length > 0) sourceLines.push(`특징: ${p.features.join(" / ")}`);
+  const evidenceLines = p.evidence.map((e) => `- [${e.source}] ${e.field}: ${e.value}`);
+  const photoLines = input.photoDescriptions.slice(0, 12).map((d, i) => `- ${i + 1}. ${d.slice(0, 200)}`);
+
+  const promptParts = [
+    "## 상품 정보",
+    sourceLines.join("\n"),
+    "",
+    "## 상품 정보 근거 (evidence — 실제로 확인된 내용만)",
+    evidenceLines.length > 0 ? evidenceLines.join("\n") : "(없음)",
+    "",
+    "## 사진 분석 결과 (참고용 — 사진에 보이는 것만)",
+    photoLines.length > 0 ? photoLines.join("\n") : "(없음)",
+    "",
+    ...(only ? ["## 후킹을 만들 판매각도", `${only.title} (${only.type}) — ${only.rationale}`, ""] : []),
+    only ? "위 판매각도에 맞는 후킹 10개를 만들어줘." : "위 정보를 바탕으로 판매각도와 각도별 후킹을 만들어줘.",
+  ];
+
+  return {
+    systemPrompt,
+    prompt: promptParts.join("\n"),
+    responseSchema: only ? productShortsHooksSchema : productShortsAnglesSchema,
+  };
 }

@@ -2,12 +2,14 @@ import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
-import { listProjectMedia, getGenerationState } from "../actions";
+import { Badge } from "@/components/ui/Badge";
+import { listProjectMedia, getGenerationState, getAngleSuggestions, getProductVersions } from "../actions";
 import { PhotoManager } from "./PhotoManager";
-import { ShortsWorkflow } from "./ShortsWorkflow";
+import { ShoppingShortsWorkspace } from "./ShoppingShortsWorkspace";
 import { DeleteProjectButton } from "./DeleteProjectButton";
 import type { ProductSource } from "@/lib/product-shorts/types";
 import { emptyGenerationState } from "@/lib/product-shorts/recommendation-types";
+import { platformLabel } from "@/lib/product-shorts/detect-platform";
 
 export default async function ProductShortsDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -28,6 +30,8 @@ export default async function ProductShortsDetailPage({ params }: { params: Prom
   const media = await listProjectMedia(id);
   const stateResult = await getGenerationState(id);
   const generationState = "state" in stateResult ? stateResult.state : emptyGenerationState();
+  const suggestionsResult = await getAngleSuggestions(id);
+  const versionsResult = await getProductVersions(id);
   const targetDurationSeconds = project.target_duration_seconds === 30 ? 30 : 15;
 
   return (
@@ -39,7 +43,12 @@ export default async function ProductShortsDetailPage({ params }: { params: Prom
       />
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold text-zinc-900">상품 정보</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-zinc-900">상품 정보</h2>
+          {/* Projects saved before platform existed carry no value and read as 기타 쇼핑몰. */}
+          <Badge tone="info">{platformLabel(source?.platform)}</Badge>
+          {source?.sourceHost && <span className="text-xs text-zinc-400">{source.sourceHost}</span>}
+        </div>
         <dl className="mt-3 flex flex-col gap-2 text-sm">
           {source?.priceText && (
             <div className="flex gap-2">
@@ -76,11 +85,13 @@ export default async function ProductShortsDetailPage({ params }: { params: Prom
         <PhotoManager projectId={id} initialMedia={media} />
       </Card>
 
-      <ShortsWorkflow
+      <ShoppingShortsWorkspace
         projectId={id}
         targetDurationSeconds={targetDurationSeconds}
         initialMedia={media}
-        initialState={generationState}
+        initialSuggestions={"success" in suggestionsResult ? suggestionsResult.suggestions : null}
+        initialVersions={"success" in versionsResult ? versionsResult.versions : []}
+        legacyState={generationState}
       />
     </div>
   );

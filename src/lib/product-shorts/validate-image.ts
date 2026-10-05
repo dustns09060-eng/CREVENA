@@ -40,6 +40,12 @@ export function detectImageMimeType(bytes: Uint8Array): AllowedImageMimeType | n
   return null;
 }
 
+// The media type to tell the AI provider for an already-validated stored image. Taken from the
+// real bytes (not a hard-coded "image/jpeg"), because PNG and WEBP uploads are accepted too.
+export function mediaTypeForAi(bytes: Uint8Array): AllowedImageMimeType {
+  return detectImageMimeType(bytes) ?? "image/jpeg";
+}
+
 const EXT_FOR_MIME: Record<AllowedImageMimeType, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",

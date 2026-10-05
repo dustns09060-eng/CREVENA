@@ -20,10 +20,12 @@ function toMap(photos: StudioPhoto[]): Map<string, EditorPhoto> {
 // hands the renderer fresh signed URLs. No AI is called anywhere in here.
 export function ShortsStudio({
   projectId,
+  versionId = null,
   initialPlan,
   initialPhotos,
 }: {
   projectId: string;
+  versionId?: string | null;
   initialPlan: ReelsProject;
   initialPhotos: StudioPhoto[];
 }) {
@@ -52,7 +54,7 @@ export function ShortsStudio({
     setSaving(true);
     setError(null);
     try {
-      const result = await saveStudioPlan(projectId, project);
+      const result = await saveStudioPlan(projectId, project, versionId);
       if ("error" in result && result.error) {
         setError(result.error);
         return;
@@ -63,7 +65,7 @@ export function ShortsStudio({
     } finally {
       setSaving(false);
     }
-  }, [projectId, project]);
+  }, [projectId, project, versionId]);
 
   const noVideos = useMemo(() => EMPTY_VIDEOS, []);
 
@@ -86,7 +88,7 @@ export function ShortsStudio({
         dirty={dirty}
         saving={saving}
         onSave={handleSave}
-        downloadFileName={`product-shorts-${projectId}.mp4`}
+        downloadFileName={versionId ? `product-shorts-${projectId}-${versionId.slice(0, 8)}.mp4` : `product-shorts-${projectId}.mp4`}
         renderNote=" 만들어진 MP4는 기기에 저장만 됩니다 (서버에 보관하지 않아요)."
         onBeforeRender={refreshPhotos}
       />
