@@ -7,7 +7,9 @@ import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
 import { buildProductShortsPlanPrompt, type ProductShortsAliasedPhoto } from "@/lib/ai/product-shorts-prompts";
 import { buildPhotoAliasMap, invertAliasMap } from "@/lib/product-shorts/photo-alias";
 import { validateProductShortsPlan } from "@/lib/product-shorts/plan-validation";
-import { assertOwnsProject, savePlan, loadGenerationState } from "@/lib/product-shorts/persist";
+import { assertOwnsProject, assertOwnsVersion, savePlan, loadGenerationState } from "@/lib/product-shorts/persist";
+import { loadVersionContext } from "@/lib/product-shorts/versions";
+import type { VersionAngle } from "@/lib/product-shorts/angle-types";
 import type { ProductSource } from "@/lib/product-shorts/types";
 import type { ReelsProject } from "@/app/(app)/collaborations/[id]/reels/actions";
 
@@ -51,6 +53,18 @@ export async function POST(request: Request) {
   const project = await assertOwnsProject(supabase, user.id, projectId);
   if ("error" in project) return NextResponse.json({ error: project.error }, { status: 403 });
 
+  // Shopping Shorts: an optional versionId targets one A/B/C version; without it the
+  // route works on the project's single V1 state exactly as before.
+  const versionId = typeof body?.versionId === "string" ? body.versionId : null;
+  let versionContext: { angle: VersionAngle; hook: string } | null = null;
+  if (versionId) {
+    const ownedVersion = await assertOwnsVersion(supabase, user.id, projectId, versionId);
+    if ("error" in ownedVersion) return NextResponse.json({ error: ownedVersion.error }, { status: 403 });
+    const loaded = await loadVersionContext(supabase, user.id, projectId, versionId);
+    if ("error" in loaded) return NextResponse.json({ error: loaded.error }, { status: 404 });
+    versionContext = loaded;
+  }
+
   const { data: projectRow } = await supabase
     .from("product_shorts_projects")
     .select("product_source")
@@ -59,7 +73,7 @@ export async function POST(request: Request) {
   if (!projectRow) return NextResponse.json({ error: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
   const productSource = projectRow.product_source as unknown as ProductSource;
 
-  const state = await loadGenerationState(supabase, user.id, projectId);
+  const state = await loadGenerationState(supabase, user.id, projectId, versionId);
   if ("error" in state) return NextResponse.json({ error: state.error }, { status: 403 });
 
   const finalSelectedIds = state.selection.includedIds.filter((id) => !state.selection.excludedIds.includes(id));
@@ -93,6 +107,8 @@ export async function POST(request: Request) {
     productSource,
     targetDurationSeconds,
     selectedPhotos: aliasedPhotos,
+    angle: versionContext?.angle ?? null,
+    hook: versionContext?.hook ?? null,
   });
 
   const { data: profile } = await supabase.from("users").select("plan_tier").eq("id", user.id).maybeSingle();
@@ -143,7 +159,7 @@ export async function POST(request: Request) {
     const reelsProject: ReelsProject = {
       scenes: validated.scenes.map((s, i) =>
         i === 0
-          ? { ...s, caption: validated.hook || s.caption }
+          ? { ...s, caption: versionContext?.hook || validated.hook || s.caption } // the hook the user picked wins over the model's
           : i === validated.scenes.length - 1
             ? { ...s, caption: validated.ctaText || s.caption }
             : s,
@@ -152,7 +168,7 @@ export async function POST(request: Request) {
       captionStyle: { preset: "basic", position: "bottom", size: "medium" },
     };
 
-    const saveResult = await savePlan(supabase, user.id, projectId, reelsProject);
+    const saveResult = await savePlan(supabase, user.id, projectId, reelsProject, versionId);
     if ("error" in saveResult) throw new Error(saveResult.error);
 
     await logAiUsage(supabase, {

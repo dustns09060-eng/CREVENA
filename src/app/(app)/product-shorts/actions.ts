@@ -8,7 +8,15 @@ import { deleteProductShortsMedia } from "@/lib/product-shorts/delete-photo";
 import { deleteProductShortsProject } from "@/lib/product-shorts/delete-project";
 import { updateProductShortsSource } from "@/lib/product-shorts/update-product-source";
 import type { ProductSource } from "@/lib/product-shorts/types";
-import { loadGenerationState, saveFinalSelection, saveEditedPlan, assertOwnsProject } from "@/lib/product-shorts/persist";
+import {
+  loadGenerationState,
+  saveFinalSelection,
+  saveEditedPlan,
+  assertOwnsProject,
+  loadAngleSuggestions,
+} from "@/lib/product-shorts/persist";
+import { createVersion, deleteVersion, listVersions, type ProductShortsVersion } from "@/lib/product-shorts/versions";
+import type { AngleSuggestionSet, VersionLabel } from "@/lib/product-shorts/angle-types";
 import {
   sanitizeFinalSelection,
   type PhotoFinalSelection,
@@ -165,6 +173,7 @@ export async function listProjectMedia(projectId: string): Promise<ProductShorts
 
 export async function getGenerationState(
   projectId: string,
+  versionId?: string | null,
 ): Promise<{ error: string } | { success: true; state: ProductShortsGenerationState }> {
   const supabase = await createSupabaseServerClient();
   const {
@@ -172,7 +181,7 @@ export async function getGenerationState(
   } = await supabase.auth.getUser();
   if (!user) return { error: "로그인이 필요합니다." };
 
-  const result = await loadGenerationState(supabase, user.id, projectId);
+  const result = await loadGenerationState(supabase, user.id, projectId, versionId);
   if ("error" in result) return result;
   return { success: true as const, state: result };
 }
@@ -183,7 +192,11 @@ export async function getGenerationState(
 // mirroring photo-select-actions.ts's savePhotoSelection re-validation
 // pattern (without reusing collaborations.photo_select itself, per
 // instruction).
-export async function saveSelection(projectId: string, selection: PhotoFinalSelection) {
+export async function saveSelection(
+  projectId: string,
+  selection: PhotoFinalSelection,
+  versionId?: string | null,
+): Promise<{ error: string } | { success: true }> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -194,7 +207,7 @@ export async function saveSelection(projectId: string, selection: PhotoFinalSele
   const realMediaIds = new Set((mediaRows ?? []).map((m) => m.id));
 
   const sanitized = sanitizeFinalSelection(selection, realMediaIds);
-  const result = await saveFinalSelection(supabase, user.id, projectId, sanitized);
+  const result = await saveFinalSelection(supabase, user.id, projectId, sanitized, versionId);
   if ("error" in result) return result;
 
   revalidatePath(`/product-shorts/${projectId}`);
@@ -204,14 +217,18 @@ export async function saveSelection(projectId: string, selection: PhotoFinalSele
 // Phase 5 studio save. The client's ReelsProject is validated server-side
 // (ownership, media membership, value ranges); only reels_project.plan is
 // updated. No AI call, no credits.
-export async function saveStudioPlan(projectId: string, project: unknown) {
+export async function saveStudioPlan(
+  projectId: string,
+  project: unknown,
+  versionId?: string | null,
+): Promise<{ error: string } | { success: true }> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "로그인이 필요합니다." };
 
-  const result = await saveEditedPlan(supabase, user.id, projectId, project);
+  const result = await saveEditedPlan(supabase, user.id, projectId, project, versionId);
   if ("error" in result) return result;
   return { success: true as const };
 }
@@ -258,4 +275,68 @@ export async function getStudioPhotos(projectId: string): Promise<{ photos: Stud
     photos.push({ id: row.id, fullUrl, thumbUrl: urlByPath.get(row.thumbPath) ?? fullUrl });
   }
   return { photos };
+}
+
+
+// ---------------------------------------------------------------------------
+// Shopping Shorts: sales angles and A/B/C versions. Return types are spelled out
+// for the same reason as above.
+// ---------------------------------------------------------------------------
+
+export async function getAngleSuggestions(
+  projectId: string,
+): Promise<{ error: string } | { success: true; suggestions: AngleSuggestionSet | null }> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+  const result = await loadAngleSuggestions(supabase, user.id, projectId);
+  if (result && "error" in result) return { error: result.error };
+  return { success: true as const, suggestions: result };
+}
+
+export async function getProductVersions(
+  projectId: string,
+): Promise<{ error: string } | { success: true; versions: ProductShortsVersion[] }> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+  const result = await listVersions(supabase, user.id, projectId);
+  if ("error" in result) return { error: result.error };
+  return { success: true as const, versions: result };
+}
+
+export async function createProductVersion(
+  projectId: string,
+  angleId: string,
+  hookId: string,
+): Promise<{ error: string } | { success: true; id: string; label: VersionLabel }> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+  if (typeof angleId !== "string" || typeof hookId !== "string") return { error: "선택한 판매각도나 후킹을 찾을 수 없어요." };
+  const result = await createVersion(supabase, user.id, projectId, { angleId, hookId });
+  if ("error" in result) return { error: result.error };
+  revalidatePath(`/product-shorts/${projectId}`);
+  return { success: true as const, id: result.id, label: result.label };
+}
+
+export async function deleteProductVersion(
+  projectId: string,
+  versionId: string,
+): Promise<{ error: string } | { success: true }> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+  const result = await deleteVersion(supabase, user.id, projectId, versionId);
+  if ("error" in result) return { error: result.error };
+  revalidatePath(`/product-shorts/${projectId}`);
+  return { success: true as const };
 }

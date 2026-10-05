@@ -23,6 +23,7 @@ import {
 } from "./recommendation-types";
 import type { ReelsProject } from "@/app/(app)/collaborations/[id]/reels/actions";
 import { sanitizeEditedPlan } from "./edit-plan";
+import type { AngleSuggestionSet } from "./angle-types";
 
 type Client = SupabaseClient<Database>;
 
@@ -64,13 +65,59 @@ export async function assertOwnsMedia(
   return { id: data.id, storagePath: data.storage_path, aiAnalysis: data.ai_analysis };
 }
 
+const EMPTY_SELECTION: PhotoFinalSelection = { pinnedIds: [], excludedIds: [], includedIds: [], coverMediaId: null };
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// A "version" (A/B/C) is one row of product_shorts_plans. Every function below
+// takes an optional `versionId`: without it they read/write the project's
+// single V1 state in product_shorts_projects.reels_project exactly as before;
+// with it they read/write ONLY that version's row, so versions can never
+// overwrite one another.
+export async function assertOwnsVersion(
+  supabase: Client,
+  userId: string,
+  projectId: string,
+  versionId: string,
+): Promise<{ id: string } | { error: string }> {
+  const { data, error } = await supabase
+    .from("product_shorts_plans")
+    .select("id, project_id, user_id")
+    .eq("id", versionId)
+    .maybeSingle();
+  if (error || !data) return { error: "버전을 찾을 수 없습니다." };
+  if (data.user_id !== userId || data.project_id !== projectId) return { error: "권한이 없습니다." };
+  return { id: data.id };
+}
+
 export async function loadGenerationState(
   supabase: Client,
   userId: string,
   projectId: string,
+  versionId?: string | null,
 ): Promise<ProductShortsGenerationState | { error: string }> {
   const owned = await assertOwnsProject(supabase, userId, projectId);
   if ("error" in owned) return owned;
+
+  if (versionId) {
+    const { data, error } = await supabase
+      .from("product_shorts_plans")
+      .select("recommendation, selection, plan")
+      .eq("id", versionId)
+      .eq("project_id", projectId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) return { error: "불러오기 실패" };
+    if (!data) return { error: "버전을 찾을 수 없습니다." };
+    return {
+      version: 1,
+      recommendation: (data.recommendation as unknown as PhotoRecommendationRun | null) ?? null,
+      selection: (data.selection as unknown as PhotoFinalSelection | null) ?? EMPTY_SELECTION,
+      plan: (data.plan as unknown as ReelsProject | null) ?? null,
+    };
+  }
 
   const { data, error } = await supabase
     .from("product_shorts_projects")
@@ -84,18 +131,58 @@ export async function loadGenerationState(
   return {
     version: 1,
     recommendation: state.recommendation ?? null,
-    selection: state.selection ?? { pinnedIds: [], excludedIds: [], includedIds: [], coverMediaId: null },
+    selection: state.selection ?? EMPTY_SELECTION,
     plan: state.plan ?? null,
   };
 }
 
-async function writeState(supabase: Client, userId: string, projectId: string, state: ProductShortsGenerationState) {
+type StatePatch = Partial<Pick<ProductShortsGenerationState, "recommendation" | "selection" | "plan">>;
+
+// Writes ONLY the fields in `patch`. Project mode merges into the existing
+// reels_project object so keys this function does not own (angleSuggestions)
+// survive; version mode updates just the named columns of that one row.
+async function writeState(
+  supabase: Client,
+  userId: string,
+  projectId: string,
+  patch: StatePatch,
+  versionId?: string | null,
+) {
   const owned = await assertOwnsProject(supabase, userId, projectId);
   if ("error" in owned) return owned;
 
+  if (versionId) {
+    const update: Database["public"]["Tables"]["product_shorts_plans"]["Update"] = {};
+    if ("recommendation" in patch) update.recommendation = patch.recommendation as unknown as Json;
+    if ("selection" in patch) update.selection = patch.selection as unknown as Json;
+    if ("plan" in patch) update.plan = patch.plan as unknown as Json;
+    const { data, error } = await supabase
+      .from("product_shorts_plans")
+      .update(update)
+      .eq("id", versionId)
+      .eq("project_id", projectId)
+      .eq("user_id", userId)
+      .select("id")
+      .maybeSingle();
+    if (error) return { error: `저장 실패: ${error.message}` };
+    if (!data) return { error: "버전을 찾을 수 없습니다." };
+    return { success: true as const };
+  }
+
+  const { data: row, error: readError } = await supabase
+    .from("product_shorts_projects")
+    .select("reels_project")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (readError) return { error: "저장 실패" };
+  const base = isRecord(row?.reels_project) ? row.reels_project : {};
+  const current = await loadGenerationState(supabase, userId, projectId);
+  if ("error" in current) return current;
+  const next = { ...base, ...current, ...patch, version: 1 };
+
   const { error } = await supabase
     .from("product_shorts_projects")
-    .update({ reels_project: state as unknown as Json })
+    .update({ reels_project: next as unknown as Json })
     .eq("id", projectId);
   if (error) return { error: `저장 실패: ${error.message}` };
   return { success: true as const };
@@ -106,10 +193,9 @@ export async function saveRecommendation(
   userId: string,
   projectId: string,
   run: PhotoRecommendationRun,
+  versionId?: string | null,
 ) {
-  const current = await loadGenerationState(supabase, userId, projectId);
-  if ("error" in current) return current;
-  return writeState(supabase, userId, projectId, { ...current, recommendation: run });
+  return writeState(supabase, userId, projectId, { recommendation: run }, versionId);
 }
 
 export async function saveFinalSelection(
@@ -117,27 +203,36 @@ export async function saveFinalSelection(
   userId: string,
   projectId: string,
   selection: PhotoFinalSelection,
+  versionId?: string | null,
 ) {
-  const current = await loadGenerationState(supabase, userId, projectId);
-  if ("error" in current) return current;
-  return writeState(supabase, userId, projectId, { ...current, selection });
+  return writeState(supabase, userId, projectId, { selection }, versionId);
 }
 
-export async function savePlan(supabase: Client, userId: string, projectId: string, plan: ReelsProject) {
-  const current = await loadGenerationState(supabase, userId, projectId);
-  if ("error" in current) return current;
-  return writeState(supabase, userId, projectId, { ...current, plan });
+export async function savePlan(
+  supabase: Client,
+  userId: string,
+  projectId: string,
+  plan: ReelsProject,
+  versionId?: string | null,
+) {
+  return writeState(supabase, userId, projectId, { plan }, versionId);
 }
 
 // Studio save (Phase 5): validates the edited ReelsProject against this
-// project's real media and the stored plan, then writes ONLY
-// reels_project.plan. Refuses when no AI plan exists yet, so the studio can
-// never be used to create a plan out of thin air. No AI, no credits.
-export async function saveEditedPlan(supabase: Client, userId: string, projectId: string, edited: unknown) {
+// project's real media and the stored plan, then writes ONLY the plan (of the
+// project, or of the one version). Refuses when no AI plan exists yet, so the
+// studio can never be used to create a plan out of thin air. No AI, no credits.
+export async function saveEditedPlan(
+  supabase: Client,
+  userId: string,
+  projectId: string,
+  edited: unknown,
+  versionId?: string | null,
+) {
   const owned = await assertOwnsProject(supabase, userId, projectId);
   if ("error" in owned) return owned;
 
-  const state = await loadGenerationState(supabase, userId, projectId);
+  const state = await loadGenerationState(supabase, userId, projectId, versionId);
   if ("error" in state) return state;
   if (!state.plan) return { error: "먼저 숏츠 구성을 만들어주세요." };
 
@@ -151,5 +246,38 @@ export async function saveEditedPlan(supabase: Client, userId: string, projectId
   const result = sanitizeEditedPlan(edited, state.plan, owned.targetDurationSeconds, new Set((mediaRows ?? []).map((m) => m.id)));
   if (!result.ok) return { error: result.error };
 
-  return writeState(supabase, userId, projectId, { ...state, plan: result.plan });
+  return writeState(supabase, userId, projectId, { plan: result.plan }, versionId);
+}
+
+// ---------------------------------------------------------------------------
+// Project-level sales-angle / hook suggestions. Stored beside the V1 state in
+// reels_project.angleSuggestions (jsonb — no column of its own), so they survive
+// a reload without paying for the AI call again.
+// ---------------------------------------------------------------------------
+
+export async function loadAngleSuggestions(
+  supabase: Client,
+  userId: string,
+  projectId: string,
+): Promise<AngleSuggestionSet | null | { error: string }> {
+  const owned = await assertOwnsProject(supabase, userId, projectId);
+  if ("error" in owned) return owned;
+  const { data, error } = await supabase.from("product_shorts_projects").select("reels_project").eq("id", projectId).maybeSingle();
+  if (error) return { error: "불러오기 실패" };
+  const raw = data?.reels_project;
+  if (!isRecord(raw) || !isRecord(raw.angleSuggestions)) return null;
+  const set = raw.angleSuggestions as unknown as AngleSuggestionSet;
+  return Array.isArray(set.angles) ? set : null;
+}
+
+export async function saveAngleSuggestions(supabase: Client, userId: string, projectId: string, set: AngleSuggestionSet) {
+  const owned = await assertOwnsProject(supabase, userId, projectId);
+  if ("error" in owned) return owned;
+  const { data: row, error: readError } = await supabase.from("product_shorts_projects").select("reels_project").eq("id", projectId).maybeSingle();
+  if (readError) return { error: "저장 실패" };
+  const base = isRecord(row?.reels_project) ? row.reels_project : { ...emptyGenerationState() };
+  const next = { ...base, angleSuggestions: set };
+  const { error } = await supabase.from("product_shorts_projects").update({ reels_project: next as unknown as Json }).eq("id", projectId);
+  if (error) return { error: `저장 실패: ${error.message}` };
+  return { success: true as const };
 }

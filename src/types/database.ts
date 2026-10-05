@@ -489,6 +489,36 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["product_shorts_media"]["Insert"]>;
         Relationships: [];
       };
+      product_shorts_plans: {
+        Row: {
+          id: string;
+          project_id: string;
+          user_id: string;
+          label: string;
+          angle: Json;
+          hook: string;
+          recommendation: Json | null;
+          selection: Json | null;
+          plan: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          user_id: string;
+          label: string;
+          angle: Json;
+          hook: string;
+          recommendation?: Json | null;
+          selection?: Json | null;
+          plan?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["product_shorts_plans"]["Insert"]>;
+        Relationships: [];
+      };
       ai_usage_logs: {
         Row: {
           id: string;

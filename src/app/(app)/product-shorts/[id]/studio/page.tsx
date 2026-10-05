@@ -6,8 +6,17 @@ import { getGenerationState, getStudioPhotos } from "../../actions";
 import { ShortsStudio } from "./ShortsStudio";
 import type { ProductSource } from "@/lib/product-shorts/types";
 
-export default async function ProductShortsStudioPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProductShortsStudioPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ version?: string }>;
+}) {
   const { id } = await params;
+  // ?version=<id> opens one A/B/C version; without it the project's single V1 plan is edited.
+  const { version } = await searchParams;
+  const versionId = typeof version === "string" && version ? version : null;
   const supabase = await createSupabaseServerClient();
 
   // RLS scopes this to the caller's own row.
@@ -18,7 +27,8 @@ export default async function ProductShortsStudioPage({ params }: { params: Prom
     .maybeSingle();
   if (!project) notFound();
 
-  const stateResult = await getGenerationState(id);
+  const stateResult = await getGenerationState(id, versionId);
+  if (versionId && "error" in stateResult) notFound(); // unknown / foreign version
   if (!("state" in stateResult) || !stateResult.state.plan) {
     // Editing is only available once an AI plan exists (no editor without a plan).
     redirect(`/product-shorts/${id}`);
@@ -40,7 +50,12 @@ export default async function ProductShortsStudioPage({ params }: { params: Prom
         }
       />
       <div className="mt-6">
-        <ShortsStudio projectId={id} initialPlan={stateResult.state.plan} initialPhotos={photosResult.photos} />
+        <ShortsStudio
+          projectId={id}
+          versionId={versionId}
+          initialPlan={stateResult.state.plan}
+          initialPhotos={photosResult.photos}
+        />
       </div>
     </div>
   );

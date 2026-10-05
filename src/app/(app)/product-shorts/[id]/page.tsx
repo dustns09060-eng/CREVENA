@@ -3,9 +3,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { listProjectMedia, getGenerationState } from "../actions";
+import { listProjectMedia, getGenerationState, getAngleSuggestions, getProductVersions } from "../actions";
 import { PhotoManager } from "./PhotoManager";
-import { ShortsWorkflow } from "./ShortsWorkflow";
+import { ShoppingShortsWorkspace } from "./ShoppingShortsWorkspace";
 import { DeleteProjectButton } from "./DeleteProjectButton";
 import type { ProductSource } from "@/lib/product-shorts/types";
 import { emptyGenerationState } from "@/lib/product-shorts/recommendation-types";
@@ -30,6 +30,8 @@ export default async function ProductShortsDetailPage({ params }: { params: Prom
   const media = await listProjectMedia(id);
   const stateResult = await getGenerationState(id);
   const generationState = "state" in stateResult ? stateResult.state : emptyGenerationState();
+  const suggestionsResult = await getAngleSuggestions(id);
+  const versionsResult = await getProductVersions(id);
   const targetDurationSeconds = project.target_duration_seconds === 30 ? 30 : 15;
 
   return (
@@ -83,11 +85,13 @@ export default async function ProductShortsDetailPage({ params }: { params: Prom
         <PhotoManager projectId={id} initialMedia={media} />
       </Card>
 
-      <ShortsWorkflow
+      <ShoppingShortsWorkspace
         projectId={id}
         targetDurationSeconds={targetDurationSeconds}
         initialMedia={media}
-        initialState={generationState}
+        initialSuggestions={"success" in suggestionsResult ? suggestionsResult.suggestions : null}
+        initialVersions={"success" in versionsResult ? versionsResult.versions : []}
+        legacyState={generationState}
       />
     </div>
   );

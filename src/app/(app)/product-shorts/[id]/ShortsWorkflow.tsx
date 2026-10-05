@@ -1,24 +1,41 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { saveSelection, type ProductShortsMediaWithUrl } from "../actions";
+import { PhotoAnalysisCard } from "./PhotoAnalysisCard";
 import type { ProductShortsGenerationState, PhotoRecommendationRun } from "@/lib/product-shorts/recommendation-types";
 import type { ReelsProject } from "@/app/(app)/collaborations/[id]/reels/actions";
 
 type Props = {
   projectId: string;
+  // Set for an A/B/C version: every call below is then scoped to that one version's
+  // row, so it can never touch another version. Unset = the project's single V1 state.
+  versionId?: string | null;
   targetDurationSeconds: 15 | 30;
-  initialMedia: ProductShortsMediaWithUrl[];
+  // Project-level photos, shared by every version (controlled by the parent).
+  media: ProductShortsMediaWithUrl[];
+  setMedia: Dispatch<SetStateAction<ProductShortsMediaWithUrl[]>>;
   initialState: ProductShortsGenerationState;
+  studioHref: string;
+  // Legacy V1 projects (no versions) keep the photo-analysis card inside this workflow.
+  showAnalysis?: boolean;
 };
 
-// §20: staged UI — ③AI 사진분석 ④AI 추천 ⑤최종 사진 선택 ⑥숏츠 구성 생성.
+// Staged UI for ONE short: 사진 추천 -> 최종 사진 선택 -> 구성 생성 -> 편집/MP4.
 // Credit cost is shown on every button before the user commits to spending it.
-export function ShortsWorkflow({ projectId, targetDurationSeconds, initialMedia, initialState }: Props) {
-  const [media, setMedia] = useState(initialMedia);
+export function ShortsWorkflow({
+  projectId,
+  versionId = null,
+  targetDurationSeconds,
+  media,
+  setMedia,
+  initialState,
+  studioHref,
+  showAnalysis = false,
+}: Props) {
   const [recommendation, setRecommendation] = useState<PhotoRecommendationRun | null>(initialState.recommendation);
   const [includedIds, setIncludedIds] = useState<string[]>(
     initialState.selection.includedIds.length > 0 ? initialState.selection.includedIds : [],
@@ -26,47 +43,25 @@ export function ShortsWorkflow({ projectId, targetDurationSeconds, initialMedia,
   const [coverMediaId, setCoverMediaId] = useState<string | null>(initialState.selection.coverMediaId);
   const [plan, setPlan] = useState<ReelsProject | null>(initialState.plan);
 
-  const [analyzing, setAnalyzing] = useState(false);
   const [recommending, setRecommending] = useState(false);
   const [savingSelection, setSavingSelection] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const recommendingRef = useRef(false);
+  const planningRef = useRef(false);
 
   const unanalyzedCount = media.filter((m) => !m.aiAnalyzed).length;
 
-  async function handleAnalyzeAll() {
-    setAnalyzing(true);
-    setError(null);
-    try {
-      for (const m of media) {
-        if (m.aiAnalyzed) continue;
-        const res = await fetch("/api/product-shorts/analyze-photo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, mediaId: m.id }),
-        });
-        const json = await res.json();
-        if (!res.ok) {
-          setError(json.error ?? "사진 분석에 실패했어요.");
-          return;
-        }
-        setMedia((prev) => prev.map((x) => (x.id === m.id ? { ...x, aiAnalyzed: true } : x)));
-      }
-    } catch {
-      setError("사진 분석에 실패했어요. 잠시 후 다시 시도해주세요.");
-    } finally {
-      setAnalyzing(false);
-    }
-  }
-
   async function handleRecommend() {
+    if (recommendingRef.current) return;
+    recommendingRef.current = true;
     setRecommending(true);
     setError(null);
     try {
       const res = await fetch("/api/product-shorts/recommend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId }),
+        body: JSON.stringify({ projectId, versionId }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -80,6 +75,7 @@ export function ShortsWorkflow({ projectId, targetDurationSeconds, initialMedia,
     } catch {
       setError("AI 추천에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
+      recommendingRef.current = false;
       setRecommending(false);
     }
   }
@@ -92,12 +88,16 @@ export function ShortsWorkflow({ projectId, targetDurationSeconds, initialMedia,
     setSavingSelection(true);
     setError(null);
     try {
-      const result = await saveSelection(projectId, {
-        pinnedIds: [],
-        excludedIds: media.filter((m) => !includedIds.includes(m.id)).map((m) => m.id),
-        includedIds,
-        coverMediaId,
-      });
+      const result = await saveSelection(
+        projectId,
+        {
+          pinnedIds: [],
+          excludedIds: media.filter((m) => !includedIds.includes(m.id)).map((m) => m.id),
+          includedIds,
+          coverMediaId,
+        },
+        versionId,
+      );
       if ("error" in result) setError(result.error ?? "저장에 실패했어요.");
     } finally {
       setSavingSelection(false);
@@ -105,13 +105,15 @@ export function ShortsWorkflow({ projectId, targetDurationSeconds, initialMedia,
   }
 
   async function handleGeneratePlan() {
+    if (planningRef.current) return;
+    planningRef.current = true;
     setGeneratingPlan(true);
     setError(null);
     try {
       const res = await fetch("/api/product-shorts/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId }),
+        body: JSON.stringify({ projectId, versionId }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -122,6 +124,7 @@ export function ShortsWorkflow({ projectId, targetDurationSeconds, initialMedia,
     } catch {
       setError("숏츠 구성 생성에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
+      planningRef.current = false;
       setGeneratingPlan(false);
     }
   }
@@ -132,38 +135,33 @@ export function ShortsWorkflow({ projectId, targetDurationSeconds, initialMedia,
     <div className="mt-6 flex flex-col gap-6">
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <Card>
-        <h2 className="text-sm font-semibold text-zinc-900">③ AI 사진 분석</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          {unanalyzedCount > 0
-            ? `분석이 필요한 사진 ${unanalyzedCount}장 (새 사진 1장당 1 크레딧). 이미 분석한 사진은 다시 분석하지 않아요.`
-            : "모든 사진이 분석되었어요."}
-        </p>
-        <Button variant="secondary" className="mt-3" loading={analyzing} loadingText="분석 중..." onClick={handleAnalyzeAll} disabled={unanalyzedCount === 0}>
-          사진 AI 분석 시작
-        </Button>
-      </Card>
+      {showAnalysis && <PhotoAnalysisCard projectId={projectId} media={media} setMedia={setMedia} />}
 
       <Card>
-        <h2 className="text-sm font-semibold text-zinc-900">④ AI 사진 추천</h2>
-        <p className="mt-1 text-xs text-zinc-500">판매 숏츠에 어울리는 사진을 AI가 골라드려요 (2 크레딧).</p>
+        <h2 className="text-sm font-semibold text-zinc-900">사진 추천 (AI)</h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          {versionId
+            ? "이 버전의 판매각도에 어울리는 사진을 AI가 골라드려요 (2 크레딧). 사진 분석은 다시 하지 않아요."
+            : "판매 숏츠에 어울리는 사진을 AI가 골라드려요 (2 크레딧)."}
+        </p>
         <Button
           variant="secondary"
           className="mt-3"
           loading={recommending}
           loadingText="추천 중..."
           onClick={handleRecommend}
-          disabled={unanalyzedCount > 0}
+          disabled={unanalyzedCount > 0 || media.length === 0}
         >
           AI 사진 추천 받기
         </Button>
+        {unanalyzedCount > 0 && <p className="mt-2 text-xs text-zinc-400">먼저 ③ 사진 AI 분석을 완료해주세요.</p>}
         {recommendation && recommendation.missingShots.length > 0 && (
           <p className="mt-2 text-xs text-amber-600">있으면 더 좋을 컷: {recommendation.missingShots.join(", ")}</p>
         )}
       </Card>
 
       <Card>
-        <h2 className="text-sm font-semibold text-zinc-900">⑤ 최종 사진 선택</h2>
+        <h2 className="text-sm font-semibold text-zinc-900">최종 사진 선택</h2>
         <p className="mt-1 text-xs text-zinc-500">AI 추천은 참고용이에요. 자유롭게 사용/제외를 바꾸고 대표 사진을 골라주세요.</p>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {media.map((m) => {
@@ -199,7 +197,7 @@ export function ShortsWorkflow({ projectId, targetDurationSeconds, initialMedia,
       </Card>
 
       <Card>
-        <h2 className="text-sm font-semibold text-zinc-900">⑥ {targetDurationSeconds}초 판매 숏츠 구성 생성</h2>
+        <h2 className="text-sm font-semibold text-zinc-900">{targetDurationSeconds}초 판매 숏츠 구성 생성</h2>
         <p className="mt-1 text-xs text-zinc-500">선택한 사진으로 장면 구성을 만들어요 (5 크레딧).</p>
         <Button
           variant="secondary"
@@ -232,15 +230,15 @@ export function ShortsWorkflow({ projectId, targetDurationSeconds, initialMedia,
       </Card>
 
       <Card>
-        <h2 className="text-sm font-semibold text-zinc-900">⑦ 숏츠 편집 및 MP4</h2>
+        <h2 className="text-sm font-semibold text-zinc-900">숏츠 편집 및 MP4</h2>
         <p className="mt-1 text-xs text-zinc-500">
           {plan
             ? "장면 순서·길이·자막을 다듬고 9:16 미리보기를 본 뒤 MP4로 만들 수 있어요. 추가 크레딧은 들지 않아요."
-            : "⑥에서 숏츠 구성을 먼저 만들면 편집할 수 있어요."}
+            : "숏츠 구성을 먼저 만들면 편집할 수 있어요."}
         </p>
         {plan ? (
           <Link
-            href={`/product-shorts/${projectId}/studio`}
+            href={studioHref}
             className="mt-3 inline-block rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
           >
             편집하기

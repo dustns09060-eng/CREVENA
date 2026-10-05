@@ -37,7 +37,10 @@ export type AiOperation =
   // card list with headline/body out), reusing no photo re-analysis and no
   // per-card charge. PNG rendering itself is free (client-side canvas, no AI
   // call, no server compute — see the STEP41 report).
-  | "CAROUSEL_PLAN";
+  | "CAROUSEL_PLAN"
+  // Shopping Shorts Studio: sales angles + hook candidates for one product (one call,
+  // structured JSON). Also used to regenerate the 10 hooks of a single angle.
+  | "ANGLE_HOOK_SUGGEST";
 
 export const OPERATION_CREDIT_COST: Record<AiOperation, number> = {
   CONTENT_GENERATE: 1,
@@ -51,6 +54,7 @@ export const OPERATION_CREDIT_COST: Record<AiOperation, number> = {
   VIDEO_FRAME_ANALYZE: 2,
   REELS_PLAN: 5,
   CAROUSEL_PLAN: 5,
+  ANGLE_HOOK_SUGGEST: 3,
 };
 
 export function creditLabel(operation: AiOperation): string {
