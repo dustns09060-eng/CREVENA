@@ -157,6 +157,7 @@ export function usePhotoManager(
   }
   const [selecting, setSelecting] = useState(false);
   const selectingRef = useRef(false);
+  const analyzingRef = useRef(false);
   const [selectProgress, setSelectProgress] = useState<PhotoSelectProgress | null>(null);
   const [selectError, setSelectError] = useState<string | null>(null);
   const [analyzeFailures, setAnalyzeFailures] = useState<PhotoAnalyzeFailure[]>([]);
@@ -232,7 +233,8 @@ export function usePhotoManager(
   // already analyzed (STEP35.5 item 5).
   async function handleAnalyzeAll() {
     const targets = photos.filter((p) => !p.ai_analysis);
-    if (targets.length === 0) return;
+    if (targets.length === 0 || analyzingRef.current) return;
+    analyzingRef.current = true;
     setAnalyzing(true);
     setError(null);
     try {
@@ -259,6 +261,7 @@ export function usePhotoManager(
       setError(userFacingPhotoError(err, "사진 분석에 실패했습니다."));
       throw err;
     } finally {
+      analyzingRef.current = false;
       setAnalyzing(false);
       setAnalyzeProgress(null);
     }
