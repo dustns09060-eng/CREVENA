@@ -50,6 +50,38 @@ export type PhotoSelectProgress = {
 
 export type PhotoAnalyzeFailure = { id: string; filename: string | null };
 
+// Bounded-concurrency runner for the photo analysis batches below. Each item
+// is still exactly one /api/ai/analyze-photo request for one photoId (no
+// dedup logic needed here — the server call itself is already 1
+// photo = 1 credit, and callers only ever pass photos that don't have
+// ai_analysis yet), just several in flight at once instead of one at a time.
+// `worker` must never let an exception cross into a failure OTHER callers
+// need to keep running past (see analyzeMissing, which catches per-item);
+// runAnalysisBatch itself only surfaces a rejection when `worker` does, and
+// once one does, no NEW item is started — already in-flight items still run
+// to completion, so their successful results are never discarded.
+async function runAnalysisBatch<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>): Promise<void> {
+  let nextIndex = 0;
+  let firstError: unknown;
+  let failed = false;
+  async function lane(): Promise<void> {
+    while (nextIndex < items.length) {
+      if (failed) return;
+      const item = items[nextIndex++];
+      try {
+        await worker(item);
+      } catch (err) {
+        failed = true;
+        firstError = err;
+        return;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, lane));
+  if (failed) throw firstError;
+}
+const PHOTO_ANALYSIS_CONCURRENCY = 3;
+
 // The AI/upload routes and server actions already answer failures with a
 // user-facing Korean message, so that message is shown as-is. Anything else
 // that can reach a catch block — a network TypeError ("Failed to fetch"), a
@@ -125,6 +157,7 @@ export function usePhotoManager(
   }
   const [selecting, setSelecting] = useState(false);
   const selectingRef = useRef(false);
+  const analyzingRef = useRef(false);
   const [selectProgress, setSelectProgress] = useState<PhotoSelectProgress | null>(null);
   const [selectError, setSelectError] = useState<string | null>(null);
   const [analyzeFailures, setAnalyzeFailures] = useState<PhotoAnalyzeFailure[]>([]);
@@ -200,13 +233,14 @@ export function usePhotoManager(
   // already analyzed (STEP35.5 item 5).
   async function handleAnalyzeAll() {
     const targets = photos.filter((p) => !p.ai_analysis);
-    if (targets.length === 0) return;
+    if (targets.length === 0 || analyzingRef.current) return;
+    analyzingRef.current = true;
     setAnalyzing(true);
     setError(null);
     try {
       setAnalyzeProgress({ done: 0, total: targets.length });
       let done = 0;
-      for (const photo of targets) {
+      await runAnalysisBatch(targets, PHOTO_ANALYSIS_CONCURRENCY, async (photo) => {
         const res = await fetch("/api/ai/analyze-photo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -221,12 +255,13 @@ export function usePhotoManager(
         );
         done += 1;
         setAnalyzeProgress({ done, total: targets.length });
-      }
+      });
       router.refresh();
     } catch (err) {
       setError(userFacingPhotoError(err, "사진 분석에 실패했습니다."));
       throw err;
     } finally {
+      analyzingRef.current = false;
       setAnalyzing(false);
       setAnalyzeProgress(null);
     }
@@ -349,7 +384,7 @@ export function usePhotoManager(
 
     setAnalyzeProgress({ done: 0, total: targets.length });
     let done = 0;
-    for (const photo of targets) {
+    await runAnalysisBatch(targets, PHOTO_ANALYSIS_CONCURRENCY, async (photo) => {
       try {
         const res = await fetch("/api/ai/analyze-photo", {
           method: "POST",
@@ -368,7 +403,7 @@ export function usePhotoManager(
       done += 1;
       setAnalyzeProgress({ done, total: targets.length });
       setSelectProgress({ stage: "ANALYZE", analyzed: { done, total: targets.length } });
-    }
+    });
     setAnalyzeProgress(null);
     return { photos: current, failures };
   }

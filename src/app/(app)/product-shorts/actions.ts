@@ -102,6 +102,24 @@ export type ProductShortsMediaWithUrl = {
   aiAnalyzed: boolean;
 };
 
+// One request to Storage's batch sign endpoint for every distinct path this
+// project needs, instead of 1-2 separate createSignedUrl calls per row
+// (which was N or 2N round trips for N rows). Same TTL/paths/RLS as before —
+// this only changes how many HTTP requests it takes to get the same URLs.
+async function batchSignedUrls(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  paths: string[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(paths)];
+  if (unique.length === 0) return new Map();
+  const { data } = await supabase.storage.from(BUCKET).createSignedUrls(unique, SIGNED_URL_TTL_SECONDS);
+  const map = new Map<string, string>();
+  for (const entry of data ?? []) {
+    if (entry.path && entry.signedUrl) map.set(entry.path, entry.signedUrl);
+  }
+  return map;
+}
+
 // Signed URLs only — this is a PRIVATE bucket, never a public URL. Same
 // 1-hour expiry as the existing collaboration-photos convention.
 export async function listProjectMedia(projectId: string): Promise<ProductShortsMediaWithUrl[]> {
@@ -114,24 +132,21 @@ export async function listProjectMedia(projectId: string): Promise<ProductShorts
 
   if (!rows) return [];
 
-  return Promise.all(
-    rows.map(async (row) => {
-      const [full, thumb] = await Promise.all([
-        supabase.storage.from(BUCKET).createSignedUrl(row.storage_path, SIGNED_URL_TTL_SECONDS),
-        row.thumbnail_path
-          ? supabase.storage.from(BUCKET).createSignedUrl(row.thumbnail_path, SIGNED_URL_TTL_SECONDS)
-          : Promise.resolve({ data: null }),
-      ]);
-      return {
-        id: row.id,
-        fullUrl: full.data?.signedUrl ?? null,
-        thumbUrl: thumb.data?.signedUrl ?? full.data?.signedUrl ?? null,
-        originalFilename: row.original_filename,
-        displayOrder: row.display_order,
-        aiAnalyzed: !!row.ai_analysis,
-      };
-    }),
-  );
+  const paths = rows.flatMap((row) => [row.storage_path, row.thumbnail_path].filter((p): p is string => !!p));
+  const urlByPath = await batchSignedUrls(supabase, paths);
+
+  return rows.map((row) => {
+    const fullUrl = urlByPath.get(row.storage_path) ?? null;
+    const thumbUrl = (row.thumbnail_path && urlByPath.get(row.thumbnail_path)) || fullUrl;
+    return {
+      id: row.id,
+      fullUrl,
+      thumbUrl,
+      originalFilename: row.original_filename,
+      displayOrder: row.display_order,
+      aiAnalyzed: !!row.ai_analysis,
+    };
+  });
 }
 
 export async function getGenerationState(projectId: string) {
@@ -210,16 +225,21 @@ export async function getStudioPhotos(projectId: string): Promise<{ photos: Stud
     .order("display_order", { ascending: true });
   if (error || !rows) return { error: "사진을 불러오지 못했어요." };
 
+  const rowPaths = rows.map((row) => ({
+    id: row.id,
+    fullPath: row.edited_storage_path ?? row.storage_path,
+    thumbPath: row.edited_thumbnail_path ?? row.thumbnail_path ?? row.edited_storage_path ?? row.storage_path,
+  }));
+  const urlByPath = await batchSignedUrls(
+    supabase,
+    rowPaths.flatMap((r) => [r.fullPath, r.thumbPath]),
+  );
+
   const photos: StudioPhoto[] = [];
-  for (const row of rows) {
-    const fullPath = row.edited_storage_path ?? row.storage_path;
-    const thumbPath = row.edited_thumbnail_path ?? row.thumbnail_path ?? fullPath;
-    const [full, thumb] = await Promise.all([
-      supabase.storage.from(BUCKET).createSignedUrl(fullPath, SIGNED_URL_TTL_SECONDS),
-      supabase.storage.from(BUCKET).createSignedUrl(thumbPath, SIGNED_URL_TTL_SECONDS),
-    ]);
-    if (!full.data) return { error: "사진 주소를 만들지 못했어요." };
-    photos.push({ id: row.id, fullUrl: full.data.signedUrl, thumbUrl: thumb.data?.signedUrl ?? full.data.signedUrl });
+  for (const row of rowPaths) {
+    const fullUrl = urlByPath.get(row.fullPath);
+    if (!fullUrl) return { error: "사진 주소를 만들지 못했어요." };
+    photos.push({ id: row.id, fullUrl, thumbUrl: urlByPath.get(row.thumbPath) ?? fullUrl });
   }
   return { photos };
 }

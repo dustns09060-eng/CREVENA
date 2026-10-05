@@ -48,33 +48,27 @@ export default async function CollaborationDetailPage({
   const tab: TabKey = (TABS.find((t) => t.key === tabParam)?.key ?? "info") as TabKey;
 
   const supabase = await createSupabaseServerClient();
-  const { data: collaboration } = await supabase
-    .from("collaborations")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  // Independent of each other — all three only filter by this route's `id`,
+  // none needs another's result — so they run concurrently.
+  const [{ data: collaboration }, { data: guide }, { data: blogContent }] = await Promise.all([
+    supabase.from("collaborations").select("*").eq("id", id).maybeSingle(),
+    supabase.from("collaboration_guides").select("raw_content").eq("collaboration_id", id).maybeSingle(),
+    // STEP38: "네이버 블로그 발행 완료" status for the 콘텐츠 제작실 tab —
+    // reuses the existing contents.status ("POSTED") and generation_input
+    // (publishState.publishedUrl), no new table/column.
+    supabase
+      .from("contents")
+      .select("status, generation_input")
+      .eq("collaboration_id", id)
+      .eq("platform", "NAVER_BLOG")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   if (!collaboration) {
     notFound();
   }
-
-  const { data: guide } = await supabase
-    .from("collaboration_guides")
-    .select("raw_content")
-    .eq("collaboration_id", id)
-    .maybeSingle();
-
-  // STEP38: "네이버 블로그 발행 완료" status for the 콘텐츠 제작실 tab —
-  // reuses the existing contents.status ("POSTED") and generation_input
-  // (publishState.publishedUrl), no new table/column.
-  const { data: blogContent } = await supabase
-    .from("contents")
-    .select("status, generation_input")
-    .eq("collaboration_id", id)
-    .eq("platform", "NAVER_BLOG")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
   const blogPublishedUrl =
     blogContent?.status === "POSTED"
       ? ((blogContent.generation_input as { publishState?: { publishedUrl?: string | null } } | null)?.publishState
