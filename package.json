@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --experimental-strip-types --import ./tests/register.mjs --test tests/*.test.ts"
   },
   "dependencies": {
     "@portone/browser-sdk": "^0.1.10",

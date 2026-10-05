@@ -6,6 +6,7 @@ import { checkAndConsumeAiCredits, refundAiCredits } from "@/lib/ai/usage-limits
 import { buildPhotoAnalysisPrompt, parseJsonResponse } from "@/lib/ai/photo-blog-prompts";
 import { OPERATION_CREDIT_COST } from "@/lib/ai/credits";
 import { assertOwnsProject, assertOwnsMedia } from "@/lib/product-shorts/persist";
+import { mediaTypeForAi } from "@/lib/product-shorts/validate-image";
 
 // Product-Shorts-specific PHOTO_ANALYSIS route — NOT a modification of
 // /api/ai/analyze-photo, which is hardwired to collaboration_photos /
@@ -72,13 +73,14 @@ export async function POST(request: Request) {
   try {
     const buffer = await fileBlob.arrayBuffer();
     const base64Data = Buffer.from(buffer).toString("base64");
+    const mediaType = mediaTypeForAi(new Uint8Array(buffer));
 
     const aiProvider = getAIProvider();
     const { systemPrompt, prompt, responseSchema } = buildPhotoAnalysisPrompt();
     const { content: raw, usage } = await aiProvider.generateContent({
       systemPrompt,
       prompt,
-      images: [{ mediaType: "image/jpeg", base64Data }],
+      images: [{ mediaType, base64Data }],
       responseSchema,
     });
 

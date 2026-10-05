@@ -16,6 +16,7 @@
 // phase). Product numbers are not in the response body, so none are read
 // from it.
 
+import { detectShoppingPlatform } from "@/lib/product-shorts/detect-platform";
 import type { ProductEvidence, ProductSource } from "@/lib/product-shorts/types";
 import { NaverCommerceError } from "./errors";
 
@@ -61,6 +62,7 @@ export function buildProductSourceFromNaver(summary: NaverProductSummary, source
   return {
     sourceUrl: normalizedUrl,
     sourceHost: host,
+    platform: detectShoppingPlatform(normalizedUrl),
     productName: summary.name,
     priceText,
     description: null, // left for the user to fill in — see file header

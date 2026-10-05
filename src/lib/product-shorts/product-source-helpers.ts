@@ -1,4 +1,5 @@
 import type { ProductEvidence, ProductEvidenceSource, ProductSource } from "./types";
+import { detectShoppingPlatform } from "./detect-platform";
 
 // Builds a ProductSource entirely from what a user typed by hand (no URL
 // analysis, no AI). Every field the user actually filled in gets a "USER"
@@ -41,6 +42,7 @@ export function buildManualProductSource(input: {
   return {
     sourceUrl,
     sourceHost,
+    platform: detectShoppingPlatform(sourceUrl),
     productName: trimmedName,
     priceText,
     description,

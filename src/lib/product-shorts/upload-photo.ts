@@ -4,6 +4,12 @@ import { detectImageMimeType, extensionForMimeType } from "./validate-image";
 
 const BUCKET = "product-shorts-media";
 
+// Server-side size caps. The browser resizes to <=1568px JPEG (well under 1MB) and the server
+// action body is capped at 4MB, but the action can be called directly, so the limit is
+// enforced here too rather than relying on the client.
+export const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
+export const MAX_THUMBNAIL_BYTES = 512 * 1024;
+
 type Client = SupabaseClient<Database>;
 
 export type UploadPhotoResult = { id: string } | { error: string };
@@ -53,6 +59,14 @@ export async function uploadProductShortsPhoto(
     return { error: "프로젝트를 찾을 수 없어요." };
   }
 
+  // Step 2a: size caps (cheap, before any byte inspection).
+  if (input.photoBytes.byteLength > MAX_PHOTO_BYTES) {
+    return { error: "사진 용량이 너무 커요. 3MB 이하로 올려 주세요." };
+  }
+  if (input.thumbnailBytes.byteLength > MAX_THUMBNAIL_BYTES) {
+    return { error: "미리보기 이미지 용량이 너무 커요. 다른 사진으로 다시 시도해주세요." };
+  }
+
   // Step 2: real image-type sniffing.
   const photoMime = detectImageMimeType(input.photoBytes);
   if (!photoMime) return { error: "지원하지 않는 이미지 형식이에요. JPG, PNG, WEBP만 업로드할 수 있어요." };
@@ -91,6 +105,7 @@ export async function uploadProductShortsPhoto(
       storage_path: photoPath,
       thumbnail_path: thumbPath,
       mime_type: photoMime,
+      file_size_bytes: input.photoBytes.byteLength,
       original_filename: input.originalFilename ?? null,
     })
     .select("id")

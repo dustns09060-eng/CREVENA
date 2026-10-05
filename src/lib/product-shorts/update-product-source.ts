@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/types/database";
 import type { ProductSource } from "./types";
+import { sanitizeProductSource } from "./validate-product-source";
 
 type Client = SupabaseClient<Database>;
 
@@ -18,12 +19,16 @@ export async function updateProductShortsSource(
   projectId: string,
   productSource: ProductSource,
 ): Promise<UpdateProductSourceResult> {
+  const checked = sanitizeProductSource(productSource);
+  if (!checked.ok) return { error: "상품 정보 형식이 올바르지 않아요." };
+  const safeSource = checked.source;
+
   const { data, error } = await supabase
     .from("product_shorts_projects")
     .update({
-      product_source: productSource as unknown as Json,
-      source_url: productSource.sourceUrl,
-      source_host: productSource.sourceHost,
+      product_source: safeSource as unknown as Json,
+      source_url: safeSource.sourceUrl,
+      source_host: safeSource.sourceHost,
     })
     .eq("id", projectId)
     .select("id")

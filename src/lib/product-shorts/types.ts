@@ -2,6 +2,10 @@
 // shape was chosen (matches ReelsMediaSummary/ReelsPlanInput conventions
 // already established for REELS_PLAN).
 
+import type { ShoppingPlatform } from "./detect-platform";
+
+export type { ShoppingPlatform };
+
 export type ProductEvidenceSource = "JSON_LD" | "OPEN_GRAPH" | "META" | "USER" | "NAVER_COMMERCE";
 
 export type ProductEvidence = {
@@ -13,6 +17,9 @@ export type ProductEvidence = {
 export type ProductSource = {
   sourceUrl: string | null; // null when the user used the manual-entry fallback
   sourceHost: string | null;
+  // Derived on the SERVER from sourceUrl (never trusted from the client). Absent on projects
+  // saved before this field existed — read those as "GENERIC" (see platformLabel).
+  platform?: ShoppingPlatform;
 
   productName: string;
   priceText?: string | null;

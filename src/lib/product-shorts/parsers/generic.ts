@@ -1,4 +1,5 @@
 import type { ProductEvidence, ProductSource } from "../types";
+import { detectShoppingPlatform } from "../detect-platform";
 
 // GenericProductParser: schema.org JSON-LD Product -> OpenGraph -> meta/title,
 // in that priority order (per the Phase 2 design). No shopping-mall-specific
@@ -72,7 +73,7 @@ function priceFromOffers(offers: unknown): string | undefined {
   if (!isRecord(offer)) return undefined;
   const price = offer.price;
   const currency = offer.priceCurrency;
-  if (price === undefined && price === null) return undefined;
+  if (price === undefined || price === null) return undefined;
   const priceStr = typeof price === "number" ? String(price) : textOf(price);
   if (!priceStr) return undefined;
   return typeof currency === "string" ? `${priceStr} ${currency}` : priceStr;
@@ -177,23 +178,46 @@ function mergePreferFirst(base: Partial<ProductSource>, addition: Partial<Produc
 }
 
 export function parseGenericProductPage(html: string, url: URL): ProductSource | null {
-  const evidence: ProductEvidence[] = [];
+  // Each strategy collects its own evidence. Only the evidence of the strategy
+  // whose value actually WON a field is kept, so evidence[] never describes a
+  // value that was discarded in favour of a higher-priority source.
+  const ldEvidence: ProductEvidence[] = [];
+  const ogEvidence: ProductEvidence[] = [];
+  const metaEvidence: ProductEvidence[] = [];
   const merged: Partial<ProductSource> = {};
 
-  const jsonLd = parseJsonLd(html, evidence);
+  const jsonLd = parseJsonLd(html, ldEvidence);
   if (jsonLd) mergePreferFirst(merged, jsonLd);
 
-  const og = parseOpenGraph(html, evidence);
+  const og = parseOpenGraph(html, ogEvidence);
   mergePreferFirst(merged, og);
 
-  const meta = parseMetaTitle(html, evidence);
+  const meta = parseMetaTitle(html, metaEvidence);
   mergePreferFirst(merged, meta);
 
   if (!merged.productName) return null; // nothing usable was found at all
 
+  const strategies: { result: Partial<ProductSource> | null; evidence: ProductEvidence[] }[] = [
+    { result: jsonLd, evidence: ldEvidence },
+    { result: og, evidence: ogEvidence },
+    { result: meta, evidence: metaEvidence },
+  ];
+  const evidence: ProductEvidence[] = [];
+  const fields: { key: "productName" | "priceText" | "description" | "imageCandidates"; evidenceField: string }[] = [
+    { key: "productName", evidenceField: "productName" },
+    { key: "priceText", evidenceField: "priceText" },
+    { key: "description", evidenceField: "description" },
+    { key: "imageCandidates", evidenceField: "imageCandidates[]" },
+  ];
+  for (const { key, evidenceField } of fields) {
+    const winner = strategies.find((st) => st.result && st.result[key] !== undefined);
+    if (winner) evidence.push(...winner.evidence.filter((e) => e.field === evidenceField));
+  }
+
   return {
     sourceUrl: url.toString(),
     sourceHost: url.hostname,
+    platform: detectShoppingPlatform(url.toString()),
     productName: merged.productName,
     priceText: merged.priceText ?? null,
     description: merged.description ?? null,
