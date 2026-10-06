@@ -58,7 +58,10 @@ test("angles: structural violations are rejected", () => {
   assert.equal(withFirst({ title: "" }).ok, false);
   assert.equal(withFirst({ hooks: hooks().slice(0, 9) }).ok, false); // 9 hooks
   assert.equal(withFirst({ hooks: [...hooks(), ...hooks("추가")].slice(0, 11) }).ok, false); // 11 hooks
-  assert.equal(validateAnglesResponse({ angles: [angle("FEATURE", { recommended: true }), angle("FEATURE", { recommended: true })] }, SOURCE, true).ok, false); // duplicate type
+  // the same TYPE twice is fine when the angles themselves differ (real model output does this) ...
+  assert.equal(validateAnglesResponse({ angles: [angle("FEATURE", { recommended: true, title: "두꺼운 원단 강조" }), angle("FEATURE", { recommended: true, title: "캡형 뚜껑 강조" })] }, SOURCE, true).ok, true);
+  // ... but the same angle (same title) twice is a duplicate
+  assert.equal(validateAnglesResponse({ angles: [angle("FEATURE", { recommended: true, title: "두꺼운 원단 강조" }), angle("TARGET", { recommended: true, title: "두꺼운  원단 강조" })] }, SOURCE, true).ok, false);
   assert.equal(validateAnglesResponse({ angles: [angle("FEATURE"), angle("TARGET")] }, SOURCE, true).ok, false); // nothing recommended
   assert.equal(validateAnglesResponse({ nope: 1 }, SOURCE, true).ok, false);
   assert.equal(validateAnglesResponse(null, SOURCE, true).ok, false);

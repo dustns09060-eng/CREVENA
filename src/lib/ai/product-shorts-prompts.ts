@@ -331,7 +331,7 @@ export function buildProductShortsAngleHookPrompt(input: ProductShortsAngleHookI
       ? []
       : [
           "## 판매각도 규칙",
-          `- ${MIN_ANGLES}~${MAX_ANGLES}개. 이 상품에 실제로 맞는 각도만 만들고, ${MAX_ANGLES}개를 채우려고 억지로 만들지 마라. 같은 유형을 두 번 쓰지 마라.`,
+          `- ${MIN_ANGLES}~${MAX_ANGLES}개. 이 상품에 실제로 맞는 각도만 만들고, ${MAX_ANGLES}개를 채우려고 억지로 만들지 마라. 각도는 제목과 내용이 서로 분명히 달라야 한다(같은 유형이 겹쳐도 되지만 같은 내용을 반복하면 안 된다).`,
           "- 유형: PROBLEM_SOLVING(문제 해결형) / VALUE(가성비형) / FEATURE(특징형) / TARGET(타깃형) / USE_SCENE(사용상황형) / COMPARE(비교/선택형).",
           "- VALUE(가성비형)는 아래 '상품 정보'에 가격이 있을 때만 쓸 수 있다. 가격 근거가 없으면 만들지 마라.",
           "- COMPARE(비교/선택형)는 다른 상품명이나 수치를 지어내지 말고, '고를 때 보는 기준'처럼 상품 정보에서 말할 수 있는 선택 기준만 다뤄라.",
