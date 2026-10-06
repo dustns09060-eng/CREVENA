@@ -80,7 +80,10 @@ export function validateAnglesResponse(raw: unknown, sourceText: string, hasPric
   }
 
   const angles: SalesAngle[] = [];
-  const usedTypes = new Set<SalesAngleType>();
+  // Two angles may share a TYPE (e.g. several different feature angles for a product whose
+  // selling points are mostly features) — real model output does this routinely. What must be
+  // distinct is the angle itself: same title (ignoring spaces/case) means a duplicate.
+  const usedTitles = new Set<string>();
   for (let i = 0; i < list.length; i++) {
     const item = list[i];
     if (!isRecord(item)) return { ok: false, error: "판매각도 항목 형식이 올바르지 않습니다." };
@@ -88,8 +91,6 @@ export function validateAnglesResponse(raw: unknown, sourceText: string, hasPric
       return { ok: false, error: "알 수 없는 판매각도 유형입니다." };
     }
     const type = item.type as SalesAngleType;
-    if (usedTypes.has(type)) return { ok: false, error: "같은 유형의 판매각도가 중복되었습니다." };
-    usedTypes.add(type);
     if (type === "VALUE" && !hasPrice) {
       return { ok: false, error: "가격 근거가 없는 상품에 가성비 각도가 만들어졌습니다." };
     }
@@ -101,6 +102,9 @@ export function validateAnglesResponse(raw: unknown, sourceText: string, hasPric
       return { ok: false, error: "판매각도 설명 길이가 올바르지 않습니다." };
     }
     if (typeof item.recommended !== "boolean") return { ok: false, error: "판매각도 추천 표시가 올바르지 않습니다." };
+    const titleKey = title.replace(/\s/g, "").toLowerCase();
+    if (usedTitles.has(titleKey)) return { ok: false, error: "같은 제목의 판매각도가 중복되었습니다." };
+    usedTitles.add(titleKey);
     const unsupported = findUnsupportedClaims(`${title}\n${rationale}`, sourceText);
     if (unsupported.length > 0) {
       return { ok: false, error: `근거 없는 표현이 판매각도에 포함되어 있습니다 (${unsupported.join(", ")}).` };
